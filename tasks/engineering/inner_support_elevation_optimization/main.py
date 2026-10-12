@@ -17,6 +17,9 @@ from tasks.engineering.inner_support_elevation_optimization.native_task import (
 from tasks.engineering.inner_support_elevation_optimization.source_review import (
     review_submission,
 )
+from tasks.engineering.inner_support_elevation_optimization.scripts.native_resources import (
+    ReplayBudgetExceeded,
+)
 from tasks.engineering.inner_support_elevation_optimization.verification import (
     EvaluationUnavailableError,
 )
@@ -64,7 +67,7 @@ async def start(task_cfg, session: cb.DesktopSession):
 
 @cb.evaluate_task(split="train")
 async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
-    deadline = time.monotonic() + 7100
+    deadline = time.monotonic() + 7150
     review = await review_submission(task_cfg.metadata, session)
     evidence = review["evidence_directory"]
     if not review["replay_eligible"]:
@@ -83,7 +86,23 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
         }
         (Path(evidence) / "evaluation-gate.json").write_text(json.dumps(gate, indent=2))
         return [0.0]
-    replay = await replay_submission(task_cfg.metadata, session, review, deadline=deadline - 420)
+    try:
+        replay = await replay_submission(
+            task_cfg.metadata, session, review, deadline=deadline - 240
+        )
+    except ReplayBudgetExceeded as error:
+        gate = {
+            "score": 0.0,
+            "success": False,
+            "evaluation_status": "resource_budget_exceeded",
+            "exhausted_resource": error.resource,
+            "reason": str(error),
+            "evidence_directory": evidence,
+            "native_replay_completed": False,
+            "full_task_acceptance": False,
+        }
+        (Path(evidence) / "evaluation-gate.json").write_text(json.dumps(gate, indent=2))
+        return [0.0]
     try:
         result = await asyncio.wait_for(
             evaluate_delivery(task_cfg.metadata, session, review, replay),

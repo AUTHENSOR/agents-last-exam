@@ -7,6 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from tasks.engineering.inner_support_elevation_optimization import main, native_task, source_review
+from tasks.engineering.inner_support_elevation_optimization.scripts.native_resources import (
+    ReplayBudgetExceeded,
+)
 from tasks.engineering.inner_support_elevation_optimization.verification import (
     EvaluationUnavailableError,
 )
@@ -127,12 +130,13 @@ async def test_failed_public_check_scores_zero_with_receipt(monkeypatch, tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_native_unavailability_is_not_a_solver_zero(monkeypatch):
+@pytest.mark.parametrize("exception_type", [EvaluationUnavailableError, RuntimeError, TimeoutError])
+async def test_native_unavailability_is_not_a_solver_zero(monkeypatch, tmp_path, exception_type):
     async def review(*args):
-        return {"replay_eligible": True, "evidence_directory": "/evaluator/review"}
+        return {"replay_eligible": True, "evidence_directory": str(tmp_path)}
 
     async def unavailable(*args, **kwargs):
-        raise EvaluationUnavailableError("Native replay incomplete")
+        raise exception_type("Native replay incomplete")
 
     async def forbidden(*args, **kwargs):
         pytest.fail("Unavailable replay reached delivery scoring")
@@ -140,8 +144,40 @@ async def test_native_unavailability_is_not_a_solver_zero(monkeypatch):
     monkeypatch.setattr(main, "review_submission", review)
     monkeypatch.setattr(main, "replay_submission", unavailable)
     monkeypatch.setattr(main, "evaluate_delivery", forbidden)
-    with pytest.raises(EvaluationUnavailableError, match="incomplete"):
+    with pytest.raises(exception_type, match="incomplete"):
         await main.evaluate(SimpleNamespace(metadata={}), object())
+    assert not (tmp_path / "evaluation-gate.json").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resource", ["wall_time", "worker_memory"])
+async def test_typed_replay_budget_failure_scores_zero_with_receipt(
+    monkeypatch, tmp_path, resource
+):
+    async def review(*args):
+        return {"replay_eligible": True, "evidence_directory": str(tmp_path)}
+
+    async def exhausted(*args, **kwargs):
+        raise ReplayBudgetExceeded(resource, "Published native replay limit exceeded")
+
+    async def forbidden(*args, **kwargs):
+        pytest.fail("Exhausted native replay reached delivery scoring")
+
+    monkeypatch.setattr(main, "review_submission", review)
+    monkeypatch.setattr(main, "replay_submission", exhausted)
+    monkeypatch.setattr(main, "evaluate_delivery", forbidden)
+    assert await main.evaluate(SimpleNamespace(metadata={}), object()) == [0.0]
+    gate = json.loads((tmp_path / "evaluation-gate.json").read_text())
+    assert gate == {
+        "score": 0.0,
+        "success": False,
+        "evaluation_status": "resource_budget_exceeded",
+        "exhausted_resource": resource,
+        "reason": "Published native replay limit exceeded",
+        "evidence_directory": str(tmp_path),
+        "native_replay_completed": False,
+        "full_task_acceptance": False,
+    }
 
 
 @pytest.mark.asyncio
@@ -164,6 +200,8 @@ async def test_native_terminal_failure_prevents_presentation_credit(
         pass
 
     async def command(*args, **kwargs):
+        if "native_resources.py" in args[1]:
+            return {"return_code": 0, "stdout": json.dumps({"cpus": [0, 1, 2, 3, 4]})}
         return {"return_code": 0, "stdout": f"MainPID=0\nExecMainStatus={exit_status}"}
 
     async def forbidden(*args, **kwargs):

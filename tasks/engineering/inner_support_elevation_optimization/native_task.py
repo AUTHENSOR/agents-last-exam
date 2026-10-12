@@ -17,6 +17,13 @@ from .delivery_scoring import (
     score_delivery,
 )
 from .remote_commands import run_command
+from .scripts.native_resources import (
+    COORDINATOR_MEMORY_MIB,
+    REPLAY_SECONDS,
+    REPLAY_WORKERS,
+    WORKER_MEMORY_MIB,
+    ReplayBudgetExceeded,
+)
 from .verification import CASES, REQUIRED_IMAGES, EvaluationUnavailableError, verify_source_bundle
 
 
@@ -31,6 +38,7 @@ NATIVE_SCRIPTS = (
     "native_replay_case.py",
     "native_replay_family.py",
     "native_parallel.py",
+    "native_resources.py",
     "native_worker.py",
     "native_verify_delivery.py",
 )
@@ -135,20 +143,28 @@ async def replay_submission(metadata, session, review, *, deadline=None):
     )
     files["review.json"] = (evidence / "native-review.json").read_bytes()
     await upload_files(session, remote, files)
-    cpus = tuple(metadata.get("native_cpus", (1, 2)))
-    if (
-        not 1 <= len(cpus) <= 2
-        or len(set(cpus)) != len(cpus)
-        or any(cpu not in (0, 1, 2, 3) for cpu in cpus)
-    ):
-        raise EvaluationUnavailableError("Invalid native evaluator CPU allocation")
-    budget = int(metadata.get("native_replay_seconds", 6600))
-    if deadline is not None:
-        budget = min(budget, int(deadline - time.monotonic()) - 60)
-    if not 120 <= budget <= 6600:
+    allocation = await run_command(
+        session,
+        shlex.join(
+            [
+                "python3",
+                remote + "/scripts/native_resources.py",
+                json.dumps(metadata.get("native_cpus")),
+            ]
+        ),
+        timeout=20,
+    )
+    resources = json.loads(allocation["stdout"])
+    cpus = tuple(resources["cpus"])
+    budget = int(metadata.get("native_replay_seconds", REPLAY_SECONDS))
+    if len(cpus) != REPLAY_WORKERS:
+        raise EvaluationUnavailableError("Native replay needs the five published worker slots")
+    if not 120 <= budget <= REPLAY_SECONDS:
         raise EvaluationUnavailableError(
             "Native replay budget must leave room in the normal evaluation window"
         )
+    if deadline is not None and deadline - time.monotonic() < budget + 60:
+        raise EvaluationUnavailableError("Insufficient time to grant the full native replay budget")
     unit = "support-evaluate-" + identifier
     command = [
         "sudo",
@@ -162,9 +178,11 @@ async def replay_submission(metadata, session, review, *, deadline=None):
         "-p",
         f"CPUQuota={100 * len(cpus)}%",
         "-p",
-        f"MemoryMax={2048 * len(cpus) + 1024}M",
+        f"MemoryMax={WORKER_MEMORY_MIB * len(cpus) + COORDINATOR_MEMORY_MIB}M",
         "-p",
         "MemorySwapMax=0",
+        "-p",
+        "OOMPolicy=continue",
         "-p",
         "LimitCORE=0",
         "-p",
@@ -202,9 +220,11 @@ async def replay_submission(metadata, session, review, *, deadline=None):
         "command": command,
         "launch": launched,
         "resources": {
+            **resources,
             "cpus": cpus,
-            "worker_memory_mib": 2048,
-            "aggregate_memory_mib": 2048 * len(cpus) + 1024,
+            "worker_memory_mib": WORKER_MEMORY_MIB,
+            "coordinator_memory_mib": COORDINATOR_MEMORY_MIB,
+            "aggregate_memory_mib": WORKER_MEMORY_MIB * len(cpus) + COORDINATOR_MEMORY_MIB,
             "runtime_budget_s": budget,
         },
         "script_sha256": {
@@ -226,7 +246,7 @@ async def replay_submission(metadata, session, review, *, deadline=None):
                     "show",
                     unit,
                     "-p",
-                    "MainPID,SubState,ExecMainStatus,Result,MemoryPeak",
+                    "MainPID,SubState,ExecMainCode,ExecMainStatus,Result,MemoryPeak,ControlGroup",
                 ]
             ),
             timeout=20,
@@ -237,6 +257,31 @@ async def replay_submission(metadata, session, review, *, deadline=None):
         )
         receipt["status"] = fields
         receipt["observed_elapsed_s"] = time.monotonic() - started
+        if fields.get("ControlGroup"):
+            probe = """import json,sys
+from pathlib import Path
+root=Path('/sys/fs/cgroup')/sys.argv[1].lstrip('/')
+result={}
+for group in [root, *root.glob('*')]:
+ if not group.is_dir():continue
+ values={}
+ for name in ('memory.events','memory.peak','memory.current','memory.max','cpu.stat'):
+  path=group/name
+  if path.exists():values[name]=path.read_text().strip()
+ if values:result[group.name]=values
+print(json.dumps(result))
+"""
+            try:
+                usage = await run_command(
+                    session,
+                    shlex.join(["python3", "-c", probe, fields["ControlGroup"]]),
+                    timeout=15,
+                    check=False,
+                )
+                if usage.get("return_code", 1) == 0:
+                    receipt["observed_cgroups"] = json.loads(usage["stdout"])
+            except (OSError, ValueError, TimeoutError) as error:
+                receipt["resource_probe_error"] = str(error)
         (evidence / "native-live.json").write_text(json.dumps(receipt, indent=2))
         if fields.get("MainPID") == "0":
             break
@@ -253,6 +298,27 @@ async def replay_submission(metadata, session, review, *, deadline=None):
             f"Native replay has no terminal receipt: {unit}"
         ) from error
     (evidence / "family-replay.json").write_text(json.dumps(replay, indent=2))
+    exhausted = replay.get("exhausted_resource")
+    confirmed_limit = (
+        exhausted == "wall_time" and replay.get("elapsed_s", 0) >= REPLAY_SECONDS
+    ) or (
+        exhausted == "worker_memory"
+        and any(
+            row.get("oom_kills", 0) > 0
+            and row.get("memory_limit_bytes") == WORKER_MEMORY_MIB * 1024**2
+            for row in replay.get("attempts", [])
+        )
+    )
+    if (
+        not replay.get("completed")
+        and replay.get("failure_kind") == "resource_exhausted"
+        and budget == REPLAY_SECONDS
+        and replay.get("runtime_budget_s") == REPLAY_SECONDS
+        and confirmed_limit
+        and fields.get("Result") in ("exit-code", "success")
+        and fields.get("ExecMainCode") == "1"
+    ):
+        raise ReplayBudgetExceeded(exhausted, replay["error"])
     if fields.get("ExecMainStatus") != "0" or not replay.get("completed"):
         raise EvaluationUnavailableError(
             f"Native replay incomplete: {replay.get('error')}; unit {unit}; checkpoints retained"

@@ -2,11 +2,14 @@
 
 import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+from native_resources import COORDINATOR_MEMORY_MIB, WORKER_MEMORY_MIB, ReplayBudgetExceeded
 
 
 def file_digest(path):
@@ -18,20 +21,22 @@ def file_digest(path):
 
 
 class NativeWorkers:
-    def __init__(self, cpus, memory_mib=2048):
-        self.cpus = tuple(cpus)
+    def __init__(self, cpus=None, memory_mib=WORKER_MEMORY_MIB):
+        from native_resources import replay_resources
+
+        self.cpus = tuple(cpus if cpus is not None else replay_resources()["cpus"])
         if (
-            not 1 <= len(self.cpus) <= 2
+            not 1 <= len(self.cpus) <= 5
             or len(set(self.cpus)) != len(self.cpus)
             or not set(self.cpus).issubset(os.sched_getaffinity(0))
         ):
-            raise ValueError("Native workers require one or two distinct allocated CPUs")
+            raise ValueError("Native workers require one to five distinct allocated CPUs")
         self.memory_bytes = memory_mib * 1024**2
         relative = Path("/proc/self/cgroup").read_text().strip().split("::", 1)[1]
         self.root = Path("/sys/fs/cgroup") / relative.lstrip("/")
         aggregate_memory = (self.root / "memory.max").read_text().strip()
         quota, period = (self.root / "cpu.max").read_text().split()
-        required_memory = len(self.cpus) * self.memory_bytes + 1024**3
+        required_memory = len(self.cpus) * self.memory_bytes + COORDINATOR_MEMORY_MIB * 1024**2
         if aggregate_memory != "max" and int(aggregate_memory) < required_memory:
             raise ValueError("Aggregate memory does not cover workers and coordinator")
         if quota != "max" and int(quota) / int(period) < len(self.cpus):
@@ -40,7 +45,7 @@ class NativeWorkers:
         coordinator.mkdir()
         (coordinator / "cgroup.procs").write_text(str(os.getpid()))
         (self.root / "cgroup.subtree_control").write_text("+cpu +memory")
-        (coordinator / "memory.max").write_text(str(1024**3))
+        (coordinator / "memory.max").write_text(str(COORDINATOR_MEMORY_MIB * 1024**2))
         (coordinator / "memory.swap.max").write_text("0")
 
     def start(self, command, destination, cpu):
@@ -49,6 +54,7 @@ class NativeWorkers:
         group.mkdir()
         (group / "memory.max").write_text(str(self.memory_bytes))
         (group / "memory.swap.max").write_text("0")
+        (group / "memory.oom.group").write_text("1")
         (group / "cpu.max").write_text("100000 100000")
         log = destination.with_name(destination.name + "-launcher.log").open("w")
         environment = {
@@ -97,10 +103,18 @@ class NativeWorkers:
 
     def aggregate_usage(self):
         usage = dict(line.split() for line in (self.root / "cpu.stat").read_text().splitlines())
+        coordinator = self.root / "coordinator"
+        events = dict(
+            line.split() for line in (coordinator / "memory.events").read_text().splitlines()
+        )
         return {
             "aggregate_cpu_s": int(usage["usage_usec"]) / 1e6,
             "aggregate_peak_memory_bytes": int((self.root / "memory.peak").read_text()),
-            "aggregate_memory_limit_bytes": (len(self.cpus) * self.memory_bytes + 1024**3),
+            "aggregate_memory_limit_bytes": (
+                len(self.cpus) * self.memory_bytes + COORDINATOR_MEMORY_MIB * 1024**2
+            ),
+            "coordinator_peak_memory_bytes": int((coordinator / "memory.peak").read_text()),
+            "coordinator_oom_kills": int(events["oom_kill"]),
             "allocated_cpus": list(self.cpus),
             "worker_memory_limit_bytes": self.memory_bytes,
         }
@@ -120,10 +134,12 @@ def run_cases(
     case_script=None,
     immutable=None,
     poll_seconds=0.25,
+    until="full",
 ):
     pending = [(position, checkpoint, 0) for position in positions]
     active = {}
     failures = []
+    resource_failures = []
     previous_hash = {}
     if checkpoint:
         metadata = json.loads(Path(checkpoint).with_suffix(".json").read_text())
@@ -133,17 +149,21 @@ def run_cases(
     script = Path(case_script) if case_script else Path(__file__).with_name("native_replay_case.py")
     while pending or active:
         remaining = deadline - time.monotonic()
-        if remaining < 120 and pending:
-            failures.append(
-                "Family runtime exhausted before pending attempts; checkpoints retained"
+        if remaining <= 0 and pending:
+            resource_failures.append(
+                (
+                    "wall_time",
+                    "Family runtime exhausted before pending attempts; checkpoints retained",
+                )
             )
             pending.clear()
-        if not failures:
+        if not failures and not resource_failures:
             for cpu in workers.cpus:
                 if cpu in active or not pending:
                     continue
                 position, restart, attempt = pending.pop(0)
-                destination = output / f"pos_{position}m-attempt{attempt}"
+                name = "common-prefix" if until == "stage7" else f"pos_{position}m"
+                destination = output / f"{name}-attempt{attempt}"
                 if destination.exists():
                     raise FileExistsError(
                         f"Native attempt must have fresh writable state: {destination}"
@@ -159,10 +179,12 @@ def run_cases(
                     "--position",
                     str(position),
                     "--runtime",
-                    str(min(3570, int(remaining - 60))),
+                    str(max(1, math.ceil(remaining))),
                     "--max-iterations",
                     str(max_iterations),
                 ]
+                if until != "full":
+                    command.extend(["--until", until])
                 if restart:
                     command.extend(["--restart", str(restart)])
                 try:
@@ -199,6 +221,7 @@ def run_cases(
             wall_elapsed = time.monotonic() - worker["started"]
             attempt_record = {
                 "position": worker["position"],
+                "scope": until,
                 "directory": str(destination),
                 "native_exit_code": terminal.get("native_exit_code"),
                 "worker_exit_code": process.returncode,
@@ -217,8 +240,23 @@ def run_cases(
             if immutable and any(file_digest(path) != digest for path, digest in immutable.items()):
                 failures.append("Common checkpoint changed during native branching")
             position = worker["position"]
-            if process.returncode == 0 and terminal.get("native_exit_code") == 0:
-                if not terminal.get("source_fact_audit", {}).get("passed") or not terminal.get(
+            if worker.get("cancelled_after_failure"):
+                pass
+            elif worker.get("coordinator_timeout"):
+                resource_failures.append(
+                    ("wall_time", f"Native pos_{position}m exceeded the family deadline")
+                )
+            elif measured.get("oom_kills", 0) > 0:
+                resource_failures.append(
+                    ("worker_memory", f"Native pos_{position}m exceeded its worker memory limit")
+                )
+            elif process.returncode == 0 and terminal.get("native_exit_code") == 0:
+                if until == "stage7":
+                    if not terminal.get("common_stage7_ready"):
+                        failures.append("Native common Stage7 prefix did not complete")
+                    else:
+                        record["common_prefix_directory"] = str(destination)
+                elif not terminal.get("source_fact_audit", {}).get("passed") or not terminal.get(
                     "extraction", {}
                 ).get("native_replay_and_reader_completed"):
                     failures.append(
@@ -231,6 +269,12 @@ def run_cases(
                         "extraction": terminal["extraction"],
                     }
             elif process.returncode == 124 and terminal.get("native_exit_code") == 124:
+                if time.monotonic() >= deadline:
+                    resource_failures.append(
+                        ("wall_time", f"Native pos_{position}m exceeded the family deadline")
+                    )
+                    pending.clear()
+                    continue
                 latest = destination / "restart/latest"
                 try:
                     metadata = json.loads(latest.with_suffix(".json").read_text())
@@ -251,8 +295,12 @@ def run_cases(
                 failures.append(
                     f"Native pos_{position}m worker exit {process.returncode}: {terminal.get('source_audit_error', terminal.get('reader_error', 'native execution incomplete'))}"
                 )
-            if failures:
+            if failures or resource_failures:
                 pending.clear()
+                for running in active.values():
+                    if resource_failures and running["process"].poll() is None:
+                        workers.stop(running)
+                        running["cancelled_after_failure"] = True
         if time.monotonic() - last_receipt >= 45 or not active:
             record["native_compute_s"] = sum(row["elapsed_s"] for row in record["attempts"])
             record["worker_cpu_s"] = sum(row["cpu_s"] for row in record["attempts"])
@@ -272,3 +320,7 @@ def run_cases(
             time.sleep(poll_seconds)
     if failures:
         raise RuntimeError("; ".join(failures))
+    if resource_failures:
+        raise ReplayBudgetExceeded(
+            resource_failures[0][0], "; ".join(row[1] for row in resource_failures)
+        )

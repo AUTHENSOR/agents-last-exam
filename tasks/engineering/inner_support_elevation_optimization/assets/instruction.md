@@ -18,6 +18,21 @@ is the intended runtime at `/opt/ale-kratos/bin/python`. GUI use is optional.
 Use the supplied support-native-family-1 interface, uniform hydrostatic pressure,
 bonded walls and a common declared non-crown rectangular beam section.
 
+The task VM is c4-standard-8 (8 vCPU, 30 GiB RAM). Your original solving window
+remains 18000 seconds (5 hours). Independent native replay has an exact
+6600-second (110-minute) wall-clock budget from native replay start, including
+the common Stage 7 prefix computed once, all five case suffixes run in parallel,
+and native state audits and extraction. Each single-threaded replay worker,
+including the common-prefix worker, has one CPU and a 4 GiB memory cap. The five
+suffix workers share a 24 GiB aggregate cap with a 4 GiB coordinator allowance;
+swap is disabled. The VM retains CPU and memory headroom outside this allocation.
+There is no element-count cap. You may choose or revise the mesh within the
+existing local-refinement and accuracy requirements. The resource limit does
+not relax those checks or the physics, material, stage or solver tolerance
+requirements.
+We recommend testing native replay with the supplied tools within these limits,
+leaving adequate time and memory headroom; no extra mesh study is required.
+
 Preserve the fourteen Mohr-Coulomb strata and their supplied parameters; elastic
 C35 walls, supports, ring beams and walers, including their 25 kN/m³ selfweight;
 the 1.00 m outer and 0.62 m equivalent inner wall thicknesses; the original
@@ -78,15 +93,22 @@ The intended weighting remains 50% numerical and 50% engineering delivery.
 Numerical checking must use independent replay of your source-compliant model,
 with the original response tolerance max(0.30 mm, 5%), rather than numbers from
 an arbitrarily fixed alternative model. No reference optimum or response-curve
-shape is prescribed. An unavailable replay is an evaluator error, not a zero
-score or evidence that your engineering solution failed.
+shape is prescribed. Exceeding the published replay time budget or a confirmed
+worker memory cap receives zero with a resource-exhaustion receipt. Unexpected
+infrastructure or code faults, including inability to provide the published
+allocation, remain evaluator-unavailable, not zero. Reduced-resource or shortened
+diagnostic replays cannot justify zero for resource exhaustion. Incomplete replay
+alone does not establish a published resource-limit violation.
 
 Evaluation is entirely deterministic. Run the supplied native_model_contract.py
 preflight before solving. model_definition.md publishes geometric size ranges,
 wall/brace coverage, monitor admissibility, local refinement and solver tolerance
 checks. These explicit adaptation rules replace subjective source interpretation.
-A violated public check receives zero with its failure recorded. Incomplete
-independent replay remains evaluator-unavailable, not a solver score.
+A violated public check receives zero with its failure recorded. Preflight
+checks geometry and declared model admissibility without a native solve; it
+does not prove compliance with the replay time or memory limits. Other incomplete
+independent replay remains evaluator-unavailable unless a published resource
+violation is established as described above.
 
 Include the support-decision JSON block specified in delivery_schema.md inside
 the engineering memo. PNG checks cover decoding, minimum dimensions and pixel

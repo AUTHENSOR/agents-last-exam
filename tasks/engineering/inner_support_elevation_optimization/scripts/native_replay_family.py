@@ -10,6 +10,7 @@ from pathlib import Path
 from native_input_adapter import read_json
 from native_replay_case import verify_review
 from native_parallel import NativeWorkers, file_digest, run_cases
+from native_resources import ReplayBudgetExceeded
 
 
 def verify_common_stage7(family, checkpoint, review, output):
@@ -52,7 +53,7 @@ def replay_family(
     *,
     total_seconds=6600,
     max_iterations=400,
-    cpus=(1, 2),
+    cpus=None,
     workers=None,
     case_script=None,
     common_checkpoint=None,
@@ -137,7 +138,7 @@ def replay_family(
                 "extraction": terminal["extraction"],
                 "reused_evaluator_owned_result": True,
             }
-        else:
+        elif common_checkpoint is None:
             run_cases(
                 family,
                 output,
@@ -149,6 +150,7 @@ def replay_family(
                 deadline,
                 max_iterations,
                 case_script=case_script,
+                until="stage7",
             )
         common = Path(common_checkpoint) if common_checkpoint else None
         if common is None:
@@ -160,7 +162,7 @@ def replay_family(
                     common = candidate
                     break
         if common is None:
-            raise ValueError("Completed case has no common native Stage7 checkpoint")
+            raise ValueError("Completed prefix has no common native Stage7 checkpoint")
         record["common_stage7"] = verify_common_stage7(
             family, common, review, output / "common-stage7-audit"
         )
@@ -182,7 +184,7 @@ def replay_family(
             family,
             output,
             review_path,
-            [1, 2, 3, 4],
+            [position for position in range(5) if f"pos_{position}m" not in record["cases"]],
             frozen,
             record,
             workers,
@@ -192,7 +194,13 @@ def replay_family(
             immutable=immutable,
         )
         record["completed"] = True
+    except ReplayBudgetExceeded as error:
+        record["failure_kind"] = "resource_exhausted"
+        record["exhausted_resource"] = error.resource
+        record["error"] = str(error)
+        raise
     except Exception as error:
+        record["failure_kind"] = "evaluator_error"
         record["error"] = f"{type(error).__name__}: {error}"
         raise
     finally:
@@ -215,7 +223,7 @@ if __name__ == "__main__":
     parser.add_argument("review")
     parser.add_argument("--total-seconds", type=int, default=6600)
     parser.add_argument("--max-iterations", type=int, default=400)
-    parser.add_argument("--cpus", type=int, nargs="+", default=[1, 2])
+    parser.add_argument("--cpus", type=int, nargs="+")
     parser.add_argument("--common-checkpoint")
     parser.add_argument("--completed-pos0")
     parser.add_argument("--prior-ledger")

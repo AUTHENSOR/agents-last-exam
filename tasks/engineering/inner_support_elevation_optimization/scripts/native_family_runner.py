@@ -914,6 +914,8 @@ class FamilyRunner:
                     "stage_2_outer_wall",
                     f"{label}_outer_support_{stage['stage'] - 2}",
                 )
+        if until == "stage7":
+            return
         self.install_wall(self.family["inner_wall_faces"], 0.62, "stage_8_inner_wall")
         if self.position == 0:
             self.install_support(
@@ -987,7 +989,7 @@ def main():
     parser.add_argument("family")
     parser.add_argument("output")
     parser.add_argument(
-        "--until", choices=("k0", "outer-wall", "first-water", "full"), default="full"
+        "--until", choices=("k0", "outer-wall", "first-water", "stage7", "full"), default="full"
     )
     parser.add_argument(
         "--linear-backend", choices=("sparse-lu", "amgcl-gmres"), default="sparse-lu"

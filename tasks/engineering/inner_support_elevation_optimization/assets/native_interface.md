@@ -65,6 +65,9 @@ First run the inexpensive deterministic preflight (no FE solve):
 /opt/ale-kratos/bin/python SOFTWARE/scripts/native_model_contract.py FAMILY
 ```
 
+This checks geometry and declared model admissibility only; it does not prove
+native replay time or memory compliance.
+
 Then run the staged native model for each position0..4, for example:
 
 ```
@@ -73,10 +76,61 @@ OMP_NUM_THREADS=1 /opt/ale-kratos/bin/python SOFTWARE/scripts/native_family_runn
 
 Here `SOFTWARE` and `FAMILY` denote the task software and delivered family
 directories. Iteration budgets affect work allowance, not convergence criteria.
-Retain each successful native `FileSerializer` checkpoint to continue after a
-runtime limit. Only the completed common Stage7 state, before any inner member
-installation, may branch the five heights. Final displacements alone are not
-a valid constitutive restart.
+Retain each successful native `FileSerializer` checkpoint for continuation
+during your solving window. Only the completed common Stage7 state, before any
+inner member installation, may branch the five heights. Final displacements
+alone are not a valid constitutive restart. Solver continuation does not extend
+or reset the evaluator's independent replay deadline.
+
+The task VM is c4-standard-8 (8 vCPU, 30 GiB RAM); the original solver window
+remains 18000 seconds (5 hours). Independent native replay computes the common
+Stage7 prefix once and then runs all five case suffixes in parallel. Its exact
+6600-second (110-minute) wall-clock budget starts at native replay start and
+includes the prefix, all five cases, native state audits and extraction. Each
+single-threaded replay worker, including the common-prefix worker, receives one
+CPU and a 4 GiB memory cap. Five suffix workers and a 4 GiB coordinator allowance
+share a 24 GiB aggregate cap without swap, leaving VM headroom.
+
+We recommend testing the complete family with the supplied native replay tools
+within these limits with adequate time and memory headroom. A single-case run
+or passing preflight does not establish full-family compliance. There is no
+element-count cap and no additional mandatory mesh study. You may choose or
+revise the mesh within the existing local-refinement and accuracy requirements.
+The resource limit does not relax those checks or the physics, material, stage
+or solver tolerance requirements.
+
+The following optional full-family self-check runs on the actual c4-standard-8
+task VM (8 vCPU, 30 GiB RAM) as `user`, using the same replay budget as evaluation.
+It is not an extra assignment. These absolute paths use the default task root;
+adjust them to the actual absolute paths if your task is staged elsewhere.
+Choose a fresh, nonexistent `REPLAY` path for every check, changing the `-01`
+suffix below, and regenerate `REVIEW` for the current family inputs.
+
+```sh
+SOFTWARE=/media/user/data/agenthle/engineering/inner_support_elevation_optimization/base/software
+FAMILY=/media/user/data/agenthle/engineering/inner_support_elevation_optimization/base/output/model_family_support_position
+REVIEW=/media/user/data/agenthle/engineering/inner_support_elevation_optimization/base/output/native-review-self-check-01.json
+REPLAY=/media/user/data/agenthle/engineering/inner_support_elevation_optimization/base/output/native-replay-self-check-01
+
+test ! -e "$REPLAY" &&
+/opt/ale-kratos/bin/python "$SOFTWARE/scripts/native_model_contract.py" "$FAMILY" > "$REVIEW" &&
+sudo -n systemd-run --wait --pipe --uid=user \
+  -p Delegate=yes -p AllowedCPUs='0 1 2 3 4' -p CPUQuota=500% \
+  -p MemoryMax=24G -p MemorySwapMax=0 -p OOMPolicy=continue \
+  -p RuntimeMaxSec=6630 \
+  env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  /opt/ale-kratos/bin/python "$SOFTWARE/scripts/native_replay_family.py" \
+  "$FAMILY" "$REPLAY" "$REVIEW" --total-seconds 6600 --cpus 0 1 2 3 4
+```
+
+The supplied replay tool applies the single-CPU, 4 GiB worker caps and the
+4 GiB coordinator allowance inside the delegated 24 GiB group. It computes
+the common Stage7 prefix once, then the five suffixes in parallel, including
+native state audits and extraction in the shared 6600-second budget.
+`RuntimeMaxSec=6630` is the outer service guard with cleanup time; it does not
+extend the native replay budget. Inspect `REPLAY/family-replay.json` and the
+native logs for completion and resource evidence. This example is not a claim
+of a newly validated VM run.
 
 The runner saves native editable/results files, a precision nodal-field export,
 calculation logs and the Stage1 baseline. Retain these generated products in
@@ -95,12 +149,18 @@ wall-top-to-toe coverage and sampling adequate to retain the physical maximum.
 These are supported serialization choices for the original raw extraction,
 not an additional engineering deliverable or prescribed monitor coordinates.
 
-Evaluation first checks the published deterministic model contract, then independently
-executes one common prefix and five native suffixes, audits actual source facts,
-and reads physical DBC/CX results. It applies the original50/50 rubric and
+Evaluation first checks the published deterministic model contract, then
+independently executes the common Stage7 prefix once and five native suffixes
+in parallel, audits actual source facts, and reads physical DBC/CX results.
+It applies the original50/50 rubric and
 max(0.30mm,5%) response tolerance; percentages retain max(0.30point,8%).
-No language-model service or evaluator credential is needed. Native replay
-unavailability produces an evaluator error; preflight violations identify
-the failed public check. Horizontal native hex faces use bilinear Q4 sampling.
+No language-model service or evaluator credential is needed. Preflight violations
+receive zero with the failed public check. Exceeding the published replay time
+budget or a confirmed worker memory cap receives zero with a resource-exhaustion
+receipt. Unexpected infrastructure or code faults and other incomplete replay
+remain evaluator-unavailable, not zero. Failure to provide the published
+allocation is evaluator-unavailable; reduced-resource or shortened diagnostic
+replays cannot justify zero for resource exhaustion. Horizontal native hex faces
+use bilinear Q4 sampling.
 Shell/crown interior traces may differ when the endpoint coupling is valid;
 both traces are retained, with gaps, overlaps and invalid constraints rejected.

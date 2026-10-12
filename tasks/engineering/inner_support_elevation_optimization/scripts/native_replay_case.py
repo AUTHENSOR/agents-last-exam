@@ -145,7 +145,10 @@ def main(
     reference=None,
     restart=None,
     resume_in_place=False,
+    until="full",
 ):
+    if until not in ("stage7", "full"):
+        raise ValueError("Replay scope must be stage7 or full")
     if not 1 <= max_iterations <= 1000:
         raise ValueError("Native iteration budget must be within 1..1000")
     review = read_json(review_path)
@@ -159,7 +162,7 @@ def main(
         str(family),
         str(output),
         "--until",
-        "full",
+        until,
         "--position",
         str(position),
         "--linear-backend",
@@ -200,6 +203,18 @@ def main(
     (output / "terminal.json").write_text(json.dumps(terminal, indent=2))
     if returncode:
         return returncode
+    if until == "stage7":
+        receipt = read_json(output / "receipt.json")
+        checkpoint = read_json(output / "restart/latest.json")
+        if (
+            not receipt.get("requested_scope_completed")
+            or receipt.get("stage_9_native_solve_completed")
+            or not checkpoint["label"].startswith("stage_7_excavate_")
+        ):
+            raise ValueError("Native common Stage7 prefix did not complete")
+        terminal["common_stage7_ready"] = True
+        (output / "terminal.json").write_text(json.dumps(terminal, indent=2))
+        return 0
     try:
         from native_source_audit import main as audit_source
 
@@ -233,9 +248,10 @@ if __name__ == "__main__":
     parser.add_argument("--restart")
     parser.add_argument("--resume-in-place", action="store_true")
     parser.add_argument("--extract-only", action="store_true")
+    parser.add_argument("--until", choices=("stage7", "full"), default="full")
     args = parser.parse_args()
-    if not 60 <= args.runtime <= 7200:
-        raise ValueError("Native child runtime must be within 60..7200 seconds")
+    if not 1 <= args.runtime <= 7200:
+        raise ValueError("Native child runtime must be within 1..7200 seconds")
     if args.extract_only:
         print(
             json.dumps(read_saved_case(args.family, args.output, args.review, args.position)),
@@ -253,5 +269,6 @@ if __name__ == "__main__":
                 args.equivalence_reference,
                 args.restart,
                 args.resume_in_place,
+                args.until,
             )
         )

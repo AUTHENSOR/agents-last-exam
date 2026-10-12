@@ -1,4 +1,4 @@
-# Deterministic A-zone model contract, 2026-10-06
+# Deterministic A-zone model contract, resource policy updated 2026-10-12
 
 This adaptation keeps the original input bytes and source manifest unchanged.
 The fourteen strata, material constants, excavation depths, water milestones,
@@ -94,6 +94,38 @@ Run SOFTWARE/scripts/native_model_contract.py FAMILY before expensive solves.
   material bindings, gravity, boundaries, activation and retained history
   are checked separately on evaluator-owned native execution.
 
+## Native replay resource policy
+
+The task VM is c4-standard-8 with 8 vCPU and 30 GiB RAM. The original solver
+window remains 18000 seconds (5 hours). Independent native replay receives
+exactly 6600 seconds (110 minutes) of wall-clock time from native replay start.
+This shared budget includes computing the common Stage 7 prefix once, running
+all five independent case suffixes in parallel, and native state audits and
+extraction. It is not a separate allowance per case or a deadline reset after
+the common prefix.
+
+Each replay worker, including the common-prefix worker, is single-threaded
+with one CPU and a 4 GiB memory cap. Five suffix workers plus the coordinator's
+4 GiB allowance have a 24 GiB aggregate memory cap, with swap disabled. The
+8-vCPU, 30-GiB VM provides headroom outside this replay allocation. The evaluator
+must provide the published allocation to apply resource-exhaustion scoring.
+
+There is no element-count cap. You may choose or revise the mesh within the
+existing geometric local-refinement and accuracy requirements. The resource
+limit does not relax those checks or the physics, material, construction-stage
+or convergence requirements. Preflight tests geometry and declared model
+admissibility, not native runtime or memory compliance. We recommend testing native replay
+with the supplied tools within the published limits and leaving adequate time
+and memory headroom. This adds no mandatory mesh/domain study.
+
+Exceeding the published time budget or confirmed worker memory cap receives
+zero with a resource-exhaustion receipt identifying the exhausted resource and
+its limit evidence. Unexpected infrastructure or code faults, inability to
+provide the published resources, and incomplete replay without an established
+published resource violation remain evaluator-unavailable, not zero. A
+reduced-resource or shortened diagnostic replay cannot justify zero for resource
+exhaustion, regardless of whether that diagnostic reaches its own limit.
+
 ## Observations and evaluation
 
 Use all DBC1..10 and CX1..10, with displacement u relative to equilibrated
@@ -115,7 +147,9 @@ curve or optimum. Response tolerance remains max(0.30 mm, 5%); percentage
 tolerance remains max(0.30 percentage point, 8%). Additional mesh/domain
 studies are further numerical validation, not another acceptance prerequisite.
 Observed errors and invalid extraction remain failures to establish native
-results. Contract violations receive zero with a concrete check failure;
-runtime/infrastructure failure or incomplete independent replay raises
-evaluator-unavailable. Passing preflight is not physical certification.
+results. Contract violations receive zero with a concrete check failure.
+Published replay time or confirmed worker memory exhaustion receives zero only
+under the resource policy above; unexpected infrastructure/code faults and
+other incomplete replay raise evaluator-unavailable. Passing preflight is not
+physical certification or proof of replay time or memory compliance.
 See delivery_schema.md for the deterministic 50/50 scoring and memo fields.
