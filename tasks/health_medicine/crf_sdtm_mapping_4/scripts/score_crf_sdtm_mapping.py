@@ -45,6 +45,41 @@ KEY_COLUMNS = [
     "sdtm_variable",
 ]
 
+PRINTED_LABEL_ALIASES = {
+    ("acrf:11:7", "AE", "AESER"): (
+        "Is the adverse event ser ous?",
+        "Is the adverse event serious?",
+    ),
+    ("acrf:11:7:1", "AE", "AESCONG"): (
+        "Is this ser ous event associated with congenital anomaly or birth defect?",
+        "Is this serious event associated with congenital anomaly or birth defect?",
+    ),
+    ("acrf:11:7:4", "AE", "AESDISAB"): (
+        "Did this serious event result in persistent or significant disabil ty/incapac ty?",
+        "Did this serious event result in persistent or significant disability/incapacity?",
+    ),
+    ("acrf:11:7:5", "AE", "AESLIFE"): (
+        "Is this ser ous event life threatening?",
+        "Is this serious event life threatening?",
+    ),
+    ("acrf:11:7:6", "AE", "AESMIE"): (
+        "Other med cally important ser ous event",
+        "Other medically important serious event",
+    ),
+    ("acrf:12:14", "SUPPAE", "AESUBJDC"): (
+        "D d the adverse event cause the subject to be discontinued from the study?",
+        "Did the adverse event cause the subject to be discontinued from the study?",
+    ),
+    ("acrf:12:15", "AE", "AEREFID"): (
+        "Ser ous Adverse Event Number:",
+        "Serious Adverse Event Number: For Pfizer Use Only",
+    ),
+    ("acrf:12:19", "AE", "AEDECOD"): (
+        "D ctionary-Derived Term",
+        "Dictionary-Derived Term",
+    ),
+}
+
 
 @dataclass
 class ScoreResult:
@@ -351,6 +386,15 @@ def _compare_columns(
             if revised_contract:
                 normalized = _normalized_value(col, observed)
                 matches = normalized is not None and normalized == _normalized_value(col, expected)
+                if col == "crf_field_label" and not matches:
+                    key = _format_key(ref_row)
+                    alias = PRINTED_LABEL_ALIASES.get(key)
+                    if alias is not None and _format_key(agent_row) == key:
+                        printed, repaired = alias
+                        matches = (
+                            normalized == _normalized_value(col, printed)
+                            and _normalized_value(col, expected) == _normalized_value(col, repaired)
+                        )
             else:
                 matches = observed == expected
         if matches:

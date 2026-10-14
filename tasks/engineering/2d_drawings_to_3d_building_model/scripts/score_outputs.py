@@ -25,13 +25,11 @@ from __future__ import annotations
 import argparse
 import base64
 import json
-import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from dotenv import dotenv_values
-from openai import OpenAI
+from tasks.utils.evaluation import judge_config, llm_judge_completion_sync
 
 
 DEFAULT_VIEW_NAMES: tuple[str, ...] = (
@@ -52,7 +50,6 @@ DEFAULT_VIEW_NAMES: tuple[str, ...] = (
 )
 
 DEFAULT_PASS_THRESHOLD = 0.5
-DEFAULT_JUDGE_MODEL = "gpt-6-astra"
 CRITERION_VIEWS: dict[str, tuple[str, ...]] = {
     "Does the candidate's overall building massing — relative proportions of the workshop Hall and the residential Tower — match the reference?": (
         "axon_NE",
@@ -137,25 +134,6 @@ def _load_config(config_path: Path) -> dict[str, Any]:
     return raw
 
 
-def _judge_settings(model: str | None = None) -> dict[str, str]:
-    secret_path = Path(__file__).resolve().parents[4] / "secret" / ".env"
-    values = {**dotenv_values(secret_path), **os.environ}
-    api_key = values.get("D2T3B_JUDGE_API_KEY") or values.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("Building judge requires D2T3B_JUDGE_API_KEY or OPENAI_API_KEY")
-    return {
-        "model": model
-        or values.get("D2T3B_JUDGE_MODEL")
-        or values.get("LLM_JUDGE_MODEL")
-        or DEFAULT_JUDGE_MODEL,
-        "base_url": values.get("D2T3B_JUDGE_BASE_URL")
-        or values.get("OPENAI_BASE_URL")
-        or values.get("OPENAI_API_BASE")
-        or "https://api.openai.com/v1",
-        "api_key": api_key,
-    }
-
-
 _JUDGE_MAX_EDGE = 1024
 
 
@@ -216,7 +194,9 @@ def evaluate_renders(
     config = _load_config(config_path)
     questions = config["judge_questions"]
     pass_threshold = config["pass_threshold"]
-    settings = _judge_settings(model)
+    settings = judge_config()
+    if model:
+        settings["model"] = model
     report: dict[str, Any] = {
         "status": "in_progress",
         "score": None,
@@ -252,55 +232,49 @@ def evaluate_renders(
         if report["missing_views"]:
             raise RuntimeError("Building judge is missing required render evidence")
 
-        with OpenAI(
-            api_key=settings["api_key"],
-            base_url=settings["base_url"],
-            timeout=120,
-            max_retries=2,
-        ) as client:
-            for index, question in enumerate(questions, start=1):
-                view_names = list(CRITERION_VIEWS[question])
-                content, missing = _build_content(
-                    reference_render_dir,
-                    candidate_render_dir,
-                    view_names,
+        for index, question in enumerate(questions, start=1):
+            view_names = list(CRITERION_VIEWS[question])
+            content, missing = _build_content(
+                reference_render_dir,
+                candidate_render_dir,
+                view_names,
+            )
+            if missing:
+                report["missing_views"] = missing
+                raise RuntimeError("Building judge lost required render evidence")
+            prompt = (
+                _build_prompt_context(config["task_description"], view_names)
+                + f"\n\nQuestion {index}/{len(questions)}: {question}"
+            )
+            response = llm_judge_completion_sync(
+                model=settings["model"],
+                messages=[
+                    {"role": "user", "content": [{"type": "text", "text": prompt}, *content]}
+                ],
+                max_tokens=2048,
+            )
+            choice = response.choices[0] if response.choices else None
+            raw_response = choice.message.content if choice else None
+            result = {
+                "question": question,
+                "question_index": index,
+                "view_names": view_names,
+                "result": None,
+                "score": None,
+                "raw_response": raw_response,
+                "response": response.model_dump(mode="json"),
+            }
+            report["per_question"].append(result)
+            persist()
+            answer = (raw_response or "").strip().upper()
+            if choice is None or choice.finish_reason != "stop" or answer not in {"YES", "NO"}:
+                raise RuntimeError(
+                    f"Building judge returned an incomplete or non-binary reply for Q{index}"
                 )
-                if missing:
-                    report["missing_views"] = missing
-                    raise RuntimeError("Building judge lost required render evidence")
-                prompt = (
-                    _build_prompt_context(config["task_description"], view_names)
-                    + f"\n\nQuestion {index}/{len(questions)}: {question}"
-                )
-                response = client.chat.completions.create(
-                    model=settings["model"],
-                    messages=[
-                        {"role": "user", "content": [{"type": "text", "text": prompt}, *content]}
-                    ],
-                    max_completion_tokens=2048,
-                )
-                choice = response.choices[0] if response.choices else None
-                raw_response = choice.message.content if choice else None
-                result = {
-                    "question": question,
-                    "question_index": index,
-                    "view_names": view_names,
-                    "result": None,
-                    "score": None,
-                    "raw_response": raw_response,
-                    "response": response.model_dump(mode="json"),
-                }
-                report["per_question"].append(result)
-                persist()
-                answer = (raw_response or "").strip().upper()
-                if choice is None or choice.finish_reason != "stop" or answer not in {"YES", "NO"}:
-                    raise RuntimeError(
-                        f"Building judge returned an incomplete or non-binary reply for Q{index}"
-                    )
-                result.update(result=answer, score=float(answer == "YES"))
-                report["yes_count"] += int(answer == "YES")
-                report["no_count"] += int(answer == "NO")
-                persist()
+            result.update(result=answer, score=float(answer == "YES"))
+            report["yes_count"] += int(answer == "YES")
+            report["no_count"] += int(answer == "NO")
+            persist()
     except Exception as error:
         report.update(status="error", error_type=type(error).__name__)
         persist()
@@ -323,7 +297,7 @@ def _parse_args() -> argparse.Namespace:
         "--output-json", default=None, help="Optional path to write the JSON report"
     )
     parser.add_argument(
-        "--model", default=None, help="Override the judge model (default: gpt-6-astra)"
+        "--model", default=None, help="Override the shared judge model"
     )
     return parser.parse_args()
 

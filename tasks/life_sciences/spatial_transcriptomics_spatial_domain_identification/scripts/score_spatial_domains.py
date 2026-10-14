@@ -54,14 +54,11 @@ VISUAL_CONTRACT = """Visual contract (spatial-umap-v2):
   Identify slice 151673 and the UMAP axes. Extra panels are allowed if the required
   UMAP panel is clearly identifiable. Plot all submitted spots without cropping
   away domains; ordinary point overlap is allowed.
-- The evaluator renders the submitted coordinates and labels and uses a vision
-  judge to check point-cloud shape, domain distributions, and label associations.
-  It does not compare to a hidden canonical UMAP or require a particular palette,
-  font, marker, point size, opacity, legend order/location, aspect ratio, or layout.
+- The UMAP presentation may use any palette, font, marker, point size, opacity,
+  legend order/location, aspect ratio, or layout.
   Axis reversal, rotation, and reflection are allowed if applied consistently.
   A readable single-frame PNG is required (at most 16 million pixels, 4096 per side);
-  there is no minimum file size. Blank images, unrelated plots, fabricated shapes,
-  shuffled spot colors, and mislabeled legends do not satisfy this contract.
+  there is no minimum file size.
 """
 VISUAL_CHECKS = ("umap_panel", "geometry", "domain_distributions", "label_associations")
 # The accepted positive fixture omits a few scored spots, so the evaluator
@@ -255,7 +252,7 @@ def _verify_umap_semantics(
         reference_png = _render_umap_reference(coordinates, labels)
         orientation_png = _render_umap_orientations(coordinates, labels)
         model = resolve_llm_judge_model(
-            env_var="SPATIAL_DOMAIN_VISION_MODEL", default="gpt-5.5-2026-04-23"
+            env_var="SPATIAL_DOMAIN_VISION_MODEL"
         )
         prompt = (
             """Check scientific plot content, not visual style.

@@ -107,7 +107,7 @@ invent times for those trips. Every admitted passenger must be completed or
 still queued, every boarding must have an alighting, and loads must remain
 between zero and capacity.
 
-## Deliverables and Evaluation
+## Deliverables
 
 Write `simulation_manifest.json` containing exactly:
 `{"contract_version":"hangzhou-discrete-event-v2","seed":42}`
@@ -125,13 +125,5 @@ Write the existing four `validation_report.txt` metrics on the completed rows:
 R2 = 1 - sum((sim-real)^2)/sum((real-mean(real))^2), or zero when the denominator
 is zero; RMSE = sqrt(mean((sim-real)^2)); Total passengers = completed row count;
 std(sim-real) uses population variance (ddof=0). All metrics must be finite.
-Use the original report line names and units. Tolerances are 0.001 for R2,
-0.02 minutes for RMSE and standard deviation, and exact passenger count.
-The scatter plot remains optional and unscored.
-
-Evaluation recomputes this model from the public inputs and your declared seed.
-It requires exact integer dynamics and conservation, not distance to a hidden
-answer or distance from observed labels. The original 80% minimum input coverage
-remains a dataset feasibility check; omitting completed passengers is invalid
-even above 80% or 95%. Close agreement with observations is not proof of copying;
-copying or fitting labels is prohibited because it does not implement this model.
+Use the original report line names and units. Report the exact passenger count.
+The scatter plot remains optional.

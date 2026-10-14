@@ -308,6 +308,32 @@ def load():
 @cb.setup_task(split="train")
 async def start(task_cfg, session: cb.DesktopSession):
     await _setup(task_cfg, session)
+    spec_path = posixpath.join(task_cfg.metadata["starter_project_dir"], "SPEC.md")
+    old_requirement = (
+        "All physical targets above must remain satisfied with a different OpenROAD "
+        "global-placement random seed (`GPL_RANDOM_SEED`, `YOSYS_SEED`, `OPENROAD_SEED`)."
+    )
+    requirement = (
+        "All physical targets above must remain satisfied with a different tool random seed. "
+        "The pinned OpenROAD-flow-scripts version exposes the routing seed as `OR_SEED`."
+    )
+    program = (
+        "from pathlib import Path\n"
+        "import re\n"
+        f"path = Path({spec_path!r})\n"
+        "text = path.read_text()\n"
+        f"if {old_requirement!r} in text:\n"
+        f"    path.write_text(text.replace({old_requirement!r}, {requirement!r}))\n"
+        f"elif {requirement!r} not in text:\n"
+        "    raise RuntimeError('OpenROAD seed contract not found in SPEC.md')\n"
+        "config = path.parent / 'flow/designs/sky130hd/ibex/config.mk'\n"
+        "text = config.read_text()\n"
+        "text = re.sub(r'(?m)^# This file is the one artifact.*\\n(?:#.*\\n|\\n)*?(?=export DESIGN_NICKNAME)', '', text)\n"
+        "text = re.sub(r'(?m)^# (?:NOTE: Starter values|STARTER \\().*\\n', '', text)\n"
+        "text = re.sub(r'(?m)[ \\t]+# STARTER.*$', '', text)\n"
+        "config.write_text(text)\n"
+    )
+    await _run_command(session, shlex.join(["python3", "-c", program]), check=True)
 
 
 @cb.evaluate_task(split="train")

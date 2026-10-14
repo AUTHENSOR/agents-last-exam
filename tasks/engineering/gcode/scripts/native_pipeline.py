@@ -15,7 +15,7 @@ def evaluate_native(
     collision_python,
     stock_binary,
     clearance_mm=5.0,
-    safety_seconds=3000,
+    safety_seconds=5400,
     resolution_mm=0.1,
 ):
     import FreeCAD
@@ -140,6 +140,11 @@ def evaluate_native(
             if report["stock"]["motions_sha256"] != report["safety"]["motions_sha256"]:
                 raise RuntimeError("Safety and stock replay consumed different physical motions")
             report["status"] = "native_replay_complete"
+        else:
+            failure = report["safety"].get("failure", {})
+            reason = failure.get("reason", "Complete native safety could not be established")
+            report["error"] = f"Native safety unavailable: {reason}"
+            report["safety_receipt"] = report["safety"]["receipt_file"]
     except InvalidDelivery as error:
         report.update(status="invalid_delivery", score=0.0, error=str(error))
     except Exception as error:

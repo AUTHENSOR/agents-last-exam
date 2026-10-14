@@ -65,14 +65,19 @@ def score(answer: dict[str, object]):
     )
 
 
-def test_config_uses_canonical_task_path():
+def test_config_uses_neutral_paths_and_canonical_identity():
     config = TASK.RgiMcr1ColistinV2Config(REMOTE_ROOT_DIR="/remote")
-    expected = "/remote/life_sciences/rgi_mcr1_colistin_v2/base"
+    expected = "/remote/life_sciences/amr_contig_annotation_instance_1/base"
     assert config.task_dir == expected
     assert config.data_task_dir == expected
     assert config.remote_output_dir == f"{expected}/output"
-    assert "amr_contig_annotation_instance_1" not in config.task_description
-    assert "DEBIAN_FRONTEND=noninteractive" in config.task_description
+    assert "amr_contig_annotation_instance_1" in config.task_description
+    assert "mcr1" not in config.task_description.lower()
+    assert "colistin" not in config.task_description.lower()
+    assert config.to_metadata()["task_id"] == "life_sciences/rgi_mcr1_colistin_v2"
+    assert config.to_metadata()["task_name"] == "rgi_mcr1_colistin_v2"
+    assert config.to_metadata()["sandbox_task_name"] == "amr_contig_annotation_instance_1"
+    assert "DEBIAN_FRONTEND=noninteractive" not in config.task_description
     assert "diamond-aligner" in config.task_description
 
 

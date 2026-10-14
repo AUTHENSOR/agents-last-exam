@@ -112,7 +112,7 @@ You are working on a Linux VM.
 - Runtime notes: `{self.software_readme_file}`
 
 ## Your Task
-1. Read `{self.task_specification_file}` for the full physics definition, conventions, output contract, and public tolerances.
+1. Read `{self.task_specification_file}` for the full physics definition, conventions, and output contract.
 2. Read `{self.config_file}` for the variant parameters.
 3. If `{self.ancilla_state_file}` is present, use it as the staged ancilla state; otherwise use the critical ancilla rule from the spec.
 4. If you need Python packages, install them from `input/runtime_env/pyproject.toml` or `input/requirements.txt`.

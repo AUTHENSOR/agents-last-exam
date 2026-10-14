@@ -40,7 +40,8 @@ def test_native_linux_contract_preserves_variants_and_outputs():
     assert card["vm"]["osType"] == "linux"
     assert card["vm"]["snapshot"] == "cpu-free-ubuntu"
     assert card["requiredSystemPackages"] == ["musescore3"]
-    assert card["evaluation"] == tasks[0].description[tasks[0].description.index("Evaluation weights"):].strip()
+    assert "Evaluation weights" in card["evaluation"]
+    assert "Evaluation weights" not in tasks[0].description
 
 
 def test_reference_and_reordered_tracks_receive_identical_credit():

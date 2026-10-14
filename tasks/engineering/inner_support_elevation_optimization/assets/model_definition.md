@@ -5,7 +5,6 @@ The fourteen strata, material constants, excavation depths, water milestones,
 structural selfweight and five support positions retain their original values.
 The following explicit task decisions control ambiguous or open source wording.
 They are benchmark modeling decisions, not recovered historical definitions.
-Evaluation uses no language model and no subjective source interpretation gate.
 
 ## Physics and construction
 
@@ -48,9 +47,8 @@ Stage 7 checkpoint may branch into independent alternatives.
 
 The figures guide reconstruction. To make acceptance explicit, this adaptation
 replaces visual judgments of exact digitization, member layout and monitor
-symbol matching with the following admissible family. These geometric limits
-are new public tolerances, not surveyed coordinates or recovered source rules.
-Run SOFTWARE/scripts/native_model_contract.py FAMILY before expensive solves.
+symbol matching with the following admissible family. These geometric requirements define the admissible model family; they are
+not surveyed coordinates or recovered source rules.
 
 - Polygons are finite, simple, have distinct vertices without a repeated closing
   vertex, and positive area. For every polygon edge direction, form the bounding
@@ -59,8 +57,7 @@ Run SOFTWARE/scripts/native_model_contract.py FAMILY before expensive solves.
   Outer polygon area divided by that rectangle area must be at most 0.95.
   The inner boundary lies strictly inside the outer polygon without crossings.
 - Both pits lie strictly inside the rectangular domain. Its bounds match actual
-  mesh nodes, top is +6.50 m and bottom contains all source strata. Recommended
-  230x185x60 m extents are not exact requirements.
+  mesh nodes, top is +6.50 m and bottom contains all source strata.
 - Wall faces are vertical Q4 rectangles on their excavation perimeter, covering
   every edge from the source toe to the declared shell top without gaps or
   overlapping panels. A declared crown attachment lies within its section below
@@ -71,7 +68,7 @@ Run SOFTWARE/scripts/native_model_contract.py FAMILY before expensive solves.
   by shared endpoint coordinates, includes perimeter waler members and contains
   a diagonal cross-pit member and at least two wall attachments. All endpoints
   lie inside or on the respective pit. Inner crown segments cover only its
-  perimeter (2 micrometre coverage tolerance). Collinear subdivisions are
+  perimeter. Collinear subdivisions are
   allowed; join member intersections. Continuous outer-waler coverage between
   registered profiles is not an additional gate in this adaptation.
 - Exactly ten DBC and ten CX registrations are finite and at least 1 m apart
@@ -113,10 +110,7 @@ must provide the published allocation to apply resource-exhaustion scoring.
 There is no element-count cap. You may choose or revise the mesh within the
 existing geometric local-refinement and accuracy requirements. The resource
 limit does not relax those checks or the physics, material, construction-stage
-or convergence requirements. Preflight tests geometry and declared model
-admissibility, not native runtime or memory compliance. We recommend testing native replay
-with the supplied tools within the published limits and leaving adequate time
-and memory headroom. This adds no mandatory mesh/domain study.
+or convergence requirements. No additional mesh/domain study is required.
 
 Exceeding the published time budget or confirmed worker memory cap receives
 zero with a resource-exhaustion receipt identifying the exhausted resource and
@@ -126,30 +120,15 @@ published resource violation remain evaluator-unavailable, not zero. A
 reduced-resource or shortened diagnostic replay cannot justify zero for resource
 exhaustion, regardless of whether that diagnostic reaches its own limit.
 
-## Observations and evaluation
+## Observation definitions
 
-Use all DBC1..10 and CX1..10, with displacement u relative to equilibrated
-Stage 1, never resetting construction movement. Report in mm:
-
-- settlement: max_i(max(0, -u_z(DBC_i)))
-- wall movement: max_i,max_depth(sqrt(u_x(CX_i,depth)^2 + u_y(CX_i,depth)^2))
-
-DBC interpolation uses native tetrahedral triangles or horizontal convex
-hexahedral Q4 faces, including bilinear cross terms. CX profiles cover -26.50
-through +7.00 m. The reader checks every represented interval endpoint.
-At a shell/crown junction it verifies actual endpoint attachment equations,
-not equality of unrelated linear shell and cubic beam interior traces. Both
-traces contribute to the maximum. Same-owner discontinuities, ownership
-overlaps, uncovered intervals and invalid endpoint coupling remain errors.
+Use all DBC1..10 and CX1..10, with displacement relative to equilibrated Stage 1.
+Report in millimeters the largest downward DBC settlement and the largest
+horizontal displacement magnitude along the full CX wall profiles. The CX
+profiles extend from -26.50 through +7.00 m. At a shell/crown junction both
+native traces belong to the profile.
 
 Own-model replay determines the reference responses; there is no prescribed
-curve or optimum. Response tolerance remains max(0.30 mm, 5%); percentage
-tolerance remains max(0.30 percentage point, 8%). Additional mesh/domain
-studies are further numerical validation, not another acceptance prerequisite.
-Observed errors and invalid extraction remain failures to establish native
-results. Contract violations receive zero with a concrete check failure.
-Published replay time or confirmed worker memory exhaustion receives zero only
-under the resource policy above; unexpected infrastructure/code faults and
-other incomplete replay raise evaluator-unavailable. Passing preflight is not
-physical certification or proof of replay time or memory compliance.
-See delivery_schema.md for the deterministic 50/50 scoring and memo fields.
+curve or optimum. Reported results must be consistent with the complete native
+fields and the fixed monitoring locations. Deliverable formats are in
+delivery_schema.md.

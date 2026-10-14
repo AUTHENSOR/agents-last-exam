@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import time
 
@@ -186,7 +187,7 @@ def test_native_null_difference_is_an_empty_containment_remainder(replay, monkey
     assert cut.isNull() or not cut.Solids
 
 
-def test_failed_upper_cut_preserves_stock_but_failed_lower_cut_stops(replay):
+def test_failed_cut_preserves_conservative_bounds_without_certifying_clear(replay):
     class FailedCut:
         def __getattr__(self, name):
             return getattr(replay.initial_stock, name)
@@ -205,12 +206,28 @@ def test_failed_upper_cut_preserves_stock_but_failed_lower_cut_stops(replay):
     assert retained.Volume == replay.initial_stock.Volume
     assert replay.report["remaining_stock_failed_upper_cuts"] == 1
     assert replay.report["remaining_stock_boolean_cuts"] == 0
-    with pytest.raises(ValueError, match="Null shape"):
-        replay._subtract(stock, cutter)
+    lower = replay._subtract(stock, cutter, on_success=lambda: completed.add("lower"))
+    assert lower.isNull()
+    assert not completed
+    assert replay.report["remaining_stock_failed_lower_cuts"] == 1
+    uncertain = replay._sweep(cutter, (0, 0, -3), (0, 0, -1), retained.copy(), lower, 0)
+    assert uncertain["status"] == "unavailable"
     result = replay._sweep(
         cutter, (0, 0, -3), (0, 0, -1), replay.initial_stock, replay.initial_stock, 0
     )
     assert result["status"] == "collision"
+
+
+def test_other_lower_cut_errors_are_not_suppressed(replay):
+    class FailedCut:
+        def __getattr__(self, name):
+            return getattr(replay.initial_stock, name)
+
+        def cut(self, cutters):
+            raise ValueError("invalid operands")
+
+    with pytest.raises(ValueError, match="invalid operands"):
+        replay._subtract(FailedCut(), replay.shapes[1]["Cutter"])
 
 
 @pytest.mark.parametrize("solid", [False, True])
@@ -473,3 +490,103 @@ def test_incomplete_stream_and_budget_never_certify_safety(replay):
     assert report["status"] == "unavailable"
     assert report["collision_free"] is None
     assert not report["tool_events_checked"]
+
+
+def test_confirmed_collision_stops_before_later_unavailable_geometry(replay):
+    def motions():
+        replay._stock_check(
+            "rapid_stock", "Cutter", 1, replay.part.makeCylinder(0.4, 1),
+            (0, 0, -3), (0, 0, -1), 0, {"motion": 0},
+        )
+        raise AssertionError("A confirmed collision must not consume subsequent motions")
+        yield from ()
+
+    report = replay.consume(motions())
+    assert report["status"] == "collision"
+    assert report["collision_free"] is False
+    assert report["confirmed_collision_count"] == 1
+    assert report["terminated_after_collision"] is True
+    assert not report["whole_path_checked"]
+    assert "failure" not in report
+    assert report["first_issues"][0]["intersection_volume_mm3"] > 0
+    assert json.loads(Path(report["receipt_file"]).read_text()) == json.loads(json.dumps(report))
+
+
+def test_unavailable_evidence_does_not_stop_as_collision(replay):
+    def motions():
+        replay._record("rapid_stock", "Cutter", 1, {"status": "unavailable"}, {})
+        replay.on_event({"ordinal": 1, "name": "PROGRAM_END"})
+        yield from ()
+
+    report = replay.consume(motions())
+    assert report["status"] == "unavailable"
+    assert report["confirmed_collision_count"] == 0
+    assert report["whole_path_checked"]
+    assert "terminated_after_collision" not in report
+
+
+def test_budget_failure_retains_receipt_and_never_reports_clear(replay):
+    replay.deadline = time.monotonic() - 1
+
+    def motions():
+        replay.on_event({"ordinal": 1, "name": "PROGRAM_END"})
+        yield from ()
+
+    report = replay.consume(motions())
+    assert report["failure"]["reason"] == "Native safety time budget exhausted"
+    assert report["status"] == "unavailable"
+    assert report["collision_free"] is None
+    assert not report["whole_path_checked"]
+    assert json.loads(Path(report["receipt_file"]).read_text()) == report
+
+
+@pytest.mark.parametrize("end,expected", [((0, 0, 0), "clear"), ((0, 0, -3), "collision")])
+def test_fcl_and_native_refinement_preserve_target_collision_detection(replay, end, expected):
+    collision_python = os.environ.get("ALE_GCODE_COLLISION_PYTHON")
+    if not collision_python:
+        pytest.skip("Set ALE_GCODE_COLLISION_PYTHON to the installed FCL runtime")
+    replay.collision_python = collision_python
+    replay.target = replay.part.makeCompound(
+        [
+            replay.part.makePlane(10, 10, replay.app.Vector(-5, -5, -2)),
+            replay.part.makePlane(10, 10, replay.app.Vector(30, 30, 4)),
+        ]
+    )
+    replay.target_bounds = safety._bounds(replay.target)
+    replay.target_faces = [(face, safety._bounds(face)) for face in replay.target.Faces]
+    replay.report["tools"]["1"] = {}
+    try:
+        result = replay._target_sweep(1, replay.shapes[1]["Cutter"], (0, 0, 1), end, 0)
+        assert result["status"] == expected
+        if expected == "clear":
+            assert replay.report["fcl_fast_proofs"] == 1
+        else:
+            assert replay.report["fcl_refinement_queries"] == 1
+            assert replay.report["fcl_refined_fast_proofs"] == 0
+            assert replay.report["occt_target_refinements"] == 1
+    finally:
+        replay.consume([])
+
+
+def test_refined_fcl_enclosure_certifies_clearance_without_occt_fallback(replay):
+    collision_python = os.environ.get("ALE_GCODE_COLLISION_PYTHON")
+    if not collision_python:
+        pytest.skip("Set ALE_GCODE_COLLISION_PYTHON to the installed FCL runtime")
+    replay.collision_python = collision_python
+    plane = replay.part.makePlane(30, 30, replay.app.Vector(-15, -15, 0))
+    plane.rotate(replay.app.Vector(0, 0, 0), replay.app.Vector(0, 1, 0), 90)
+    plane.translate(replay.app.Vector(1.014, 0, 0))
+    replay.target = replay.part.makeCompound(
+        [plane, replay.part.makePlane(2, 2, replay.app.Vector(-30, -30, -30))]
+    )
+    replay.target_bounds = safety._bounds(replay.target)
+    replay.target_faces = [(face, safety._bounds(face)) for face in replay.target.Faces]
+    replay.report["tools"]["1"] = {}
+    try:
+        result = replay._target_sweep(1, replay.shapes[1]["Cutter"], (0, 0, 0), (0, 0, 5), 0)
+        assert result["status"] == "clear"
+        assert replay.report["fcl_refinement_queries"] == 1
+        assert replay.report["fcl_refined_fast_proofs"] == 1
+        assert replay.report["occt_target_refinements"] == 0
+    finally:
+        replay.consume([])

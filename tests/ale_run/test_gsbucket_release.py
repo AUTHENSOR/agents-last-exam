@@ -20,6 +20,9 @@ def sandbox():
 @pytest.fixture(autouse=True)
 def task_paths(monkeypatch):
     monkeypatch.setattr(gsbucket, "task_subdir", lambda *args: "/tasks/domain/task/base")
+    monkeypatch.setattr(
+        gsbucket, "prepare_task_subdir", AsyncMock(return_value="/tasks/domain/task/base")
+    )
     monkeypatch.setattr(gsbucket, "_gcs_prefix", lambda source, task: source + "/domain/task/base")
     monkeypatch.setattr(gsbucket, "_restore_symlinks", AsyncMock())
 

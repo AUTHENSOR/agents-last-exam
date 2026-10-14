@@ -44,6 +44,9 @@ except ModuleNotFoundError:  # pragma: no cover - local import fallback only
     from tasks.linux_runtime import LinuxTaskConfig
 
 from tasks.common_setup import BaseTaskSetup
+from tasks.health_medicine.healthcare_bias_audit_27a_public_replication_v1.report_check import (
+    check_figure_interpretation,
+)
 
 _setup = BaseTaskSetup()
 
@@ -51,7 +54,12 @@ SCRIPTS_DIR = Path(__file__).resolve().parent / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from score_outputs import REQUIRED_OUTPUT_FILES, ScoreResult, score_output_bundle  # noqa: E402
+from tasks.health_medicine.healthcare_bias_audit_27a_public_replication_v1.scripts.score_outputs import (  # noqa: E402
+    REQUIRED_OUTPUT_FILES,
+    REQUIRED_REFERENCE_FILES,
+    ScoreResult,
+    score_output_bundle,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +67,7 @@ DOMAIN_NAME = "health_medicine"
 TASK_NAME = "healthcare_bias_audit_27a_public_replication_v1"
 TASK_ID = f"{DOMAIN_NAME}/{TASK_NAME}"
 VARIANT_NAME = "base"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 RUNTIME_CONTRACT = r"""Numerical reproduction runtime (Linux x86_64):
 Use the tested environment below for the supplied scripts. This specific recipe takes precedence over the general allowance for functionally equivalent versions in `task_note.txt`. `bias.yml` records the original bundle environment; the recipe retains its analytical package versions with a validated MKL build. Task-local `software/task_python` and `software/task_rscript` wrappers are not provided.
@@ -82,11 +91,11 @@ export R_LIBS_USER="$BIAS_ENV/lib/R/library"
 export R_LIBS_SITE="$BIAS_ENV/lib/R/library"
 export R_ENVIRON_USER=/dev/null R_PROFILE_USER=/dev/null
 ```
-Run Python scripts with `"$BIAS_ENV/bin/python" -s` and R scripts with `"$BIAS_ENV/bin/Rscript" --vanilla`, from the writable bundle root containing `code/` and `data/`. Keep the environment outside the deliverable directory. Do not rely on the machine's default Python/R or user-installed packages. If GitPython is available, ensure the working copy does not resolve to an unrelated parent Git repository.
+Run Python scripts with `"$BIAS_ENV/bin/python" -s` and R scripts with `"$BIAS_ENV/bin/Rscript" --vanilla`, from the writable bundle root containing `code/` and `data/`. Keep the environment outside the deliverable directory.
 
-Preserve the supplied feature selection, training split, grouped cross-validation, `LassoCV(normalize=True)`, seeds, and R 3.5.1 sampling behavior. Merely replacing a removed API argument or using modern R's default `sample()` is not the same numerical reproduction. Minimal path/setup repairs remain permitted; do not change model logic or data.
+Preserve the supplied feature selection, training split, grouped cross-validation, `LassoCV(normalize=True)`, seeds, and R 3.5.1 sampling behavior. Minimal path/setup repairs remain permitted; do not change model logic or data.
 
-CSV filenames, headers, row counts and row order must match the supplied workflow's outputs. Numeric CSV cells and structured numeric answers are compared with absolute tolerance `1e-6`; retain full numeric precision rather than rounding beyond what the scripts already do. JSON categorical values use the starter template's exact strings. No precomputed results may be substituted.
+CSV filenames, headers, row counts and row order must match the supplied workflow's outputs. Retain full numeric precision rather than rounding beyond what the scripts already do. JSON categorical values use the starter template's exact strings. No precomputed results may be substituted.
 """
 
 
@@ -214,10 +223,6 @@ class HealthcareBiasAuditConfig(LinuxTaskConfig):
         return f"{self.reference_dir}/audit_answers.json"
 
     @property
-    def reference_memo_file(self) -> str:
-        return f"{self.reference_dir}/audit_memo.md"
-
-    @property
     def reference_results_dir(self) -> str:
         return f"{self.reference_dir}/results"
 
@@ -248,7 +253,7 @@ Your job is to:
 1. Create a writable working copy of the staged bundle under `{self.remote_output_dir}` (or another writable subdirectory inside it) so the supplied scripts can write `results/` without mutating the staged `input/` tree.
 2. Run the provided Python and R scripts in the dependency order needed to generate the five required CSV outputs.
 3. Fill in `audit_answers.json` using only the public synthetic replication outputs from this run.
-4. Write `audit_memo.md` for a clinical analytics lead, grounding it in this run's outputs and clearly distinguishing the public synthetic replication from the paper's private-data values.
+4. Write `audit_memo.md` for a clinical analytics lead, grounding its conclusions and recommendation in this run's public synthetic outputs.
 5. Save exactly these deliverables under `{self.remote_output_dir}`:
    - `results/model_lasso_predictors.csv`
    - `results/model_r2.csv`
@@ -262,7 +267,7 @@ Rules:
 - Do not modify the staged dataset.
 - Do not add race as a model feature.
 - Do not replace the supplied workflow with a different analytical pipeline.
-- Do not use the original paper's `17.7% -> 46.5%` value or the later `59%` correction as the graded answer.
+- Derive all reported results from the supplied public synthetic data and this run's outputs.
 - If you create scratch files under `{self.remote_output_dir}`, clean them up before finishing so only the required deliverables remain.
 """
 
@@ -289,7 +294,6 @@ Rules:
                 "answers_output_file": self.answers_output_file,
                 "memo_output_file": self.memo_output_file,
                 "reference_answers_file": self.reference_answers_file,
-                "reference_memo_file": self.reference_memo_file,
                 "reference_results_dir": self.reference_results_dir,
             }
         )
@@ -314,6 +318,11 @@ def load():
 @cb.setup_task(split="train")
 async def start(task_cfg, session: cb.DesktopSession):
     await _setup(task_cfg, session)
+    for name in ("task_note.txt", "audit_memo.md"):
+        await session.write_file(
+            f'{task_cfg.metadata["input_dir"]}/{name}',
+            (ASSETS_DIR / name).read_text(encoding="utf-8"),
+        )
 
 
 @cb.evaluate_task(split="train")
@@ -326,11 +335,7 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
         logger.error("Unexpected candidate output file set: %s", sorted(observed_files))
         return [0.0]
 
-    reference_paths = [
-        meta["reference_answers_file"],
-        meta["reference_memo_file"],
-        *[f'{meta["reference_dir"]}/{name}' for name in REQUIRED_OUTPUT_FILES if name.startswith("results/")],
-    ]
+    reference_paths = [f'{meta["reference_dir"]}/{name}' for name in REQUIRED_REFERENCE_FILES]
     missing_reference = [path for path in reference_paths if not (await session.file_exists(path) or await session.directory_exists(path))]
     if missing_reference:
         logger.error("Missing reference evaluation paths: %s", missing_reference)
@@ -341,10 +346,9 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
         reference_files = {}
         for rel_path in REQUIRED_OUTPUT_FILES:
             candidate_path = f'{meta["remote_output_dir"]}/{rel_path}'
-            reference_path = (
-                meta["reference_dir"] + "/" + rel_path
-            )
             candidate_files[rel_path] = _as_text(await session.read_file(candidate_path))
+        for rel_path in REQUIRED_REFERENCE_FILES:
+            reference_path = f'{meta["reference_dir"]}/{rel_path}'
             reference_files[rel_path] = _as_text(await session.read_file(reference_path))
     except Exception as exc:
         logger.error("Failed to read task outputs/reference files: %s", exc)
@@ -352,4 +356,8 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
 
     result = score_output_bundle(candidate_files=candidate_files, reference_files=reference_files)
     _log_score(result)
-    return [float(result.score)]
+    if not result.passed:
+        return [float(result.score)]
+    memo_result = await check_figure_interpretation(candidate_files["audit_memo.md"])
+    logger.info("memo_figure_interpretation=%s", json.dumps(memo_result, ensure_ascii=True))
+    return [1.0 if memo_result["passed"] else 0.0]

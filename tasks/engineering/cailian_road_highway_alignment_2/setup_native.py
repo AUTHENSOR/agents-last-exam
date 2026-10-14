@@ -19,7 +19,7 @@ async def stage_native_task(meta, session):
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         for path in sorted((ROOT / "assets").iterdir()):
-            if path.is_file():
+            if path.is_file() and path.name != "original_contract.json":
                 archive.add(path, arcname=f"input/{path.name}")
         for name in SCRIPT_NAMES:
             archive.add(ROOT / "scripts" / name, arcname=f"software/{name}")
@@ -32,6 +32,11 @@ async def stage_native_task(meta, session):
         command = "import base64; " + f"open({packed!r}, {'wb' if offset == 0 else 'ab'!r}).write(base64.b64decode({encoded!r}))"
         await run_native_command(session, shlex.join(["python3", "-c", command]), seconds=30)
     await run_native_command(session, shlex.join(["tar", "-xzf", packed, "-C", task_dir]), seconds=30)
+    remove_legacy = (
+        "from pathlib import Path; "
+        f"Path({meta['input_dir'] + '/original_contract.json'!r}).unlink(missing_ok=True)"
+    )
+    await run_native_command(session, shlex.join(["python3", "-c", remove_legacy]), seconds=30)
     installed = await run_native_command(session, shlex.join(["python3", f"{meta['software_dir']}/prepare_runtime.py", meta["software_dir"]]), seconds=30)
     try:
         receipt = json.loads(installed["stdout"])

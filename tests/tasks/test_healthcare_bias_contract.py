@@ -288,7 +288,7 @@ def test_generated_prompt_and_card_publish_identical_runtime_contract():
     card = json.loads(Path(main.__file__).with_name("task_card.json").read_text())
     for prompt in (main.config.task_description, card["taskPrompt"]):
         assert main.RUNTIME_CONTRACT in prompt
-        assert "absolute tolerance `1e-6`" in prompt
+        assert "absolute tolerance `1e-6`" not in prompt
         assert "takes precedence" in prompt
         assert "wrappers are not provided" in prompt
         assert "LassoCV(normalize=True)" in prompt

@@ -18,10 +18,11 @@ import soundfile as sf
 from cua_bench.computers.remote import RemoteDesktopSession
 
 from tasks.utils.evaluation import EvaluationContext, JudgeInfrastructureError
-from tasks.visual_media.project_migration import audio_judge, main, runtime
+from tasks.visual_media.project_migration import audio_judge, audio_score, main, runtime
 from tasks.visual_media.project_migration.scripts.audio_delivery import check_delivery
 from tasks.visual_media.project_migration.scripts.project_check import control_curves
 
+pytestmark = pytest.mark.usefixtures("judge_api_credentials")
 
 ROOT = Path(__file__).resolve().parents[2] / "tasks/visual_media/project_migration"
 SELECTED_VARIANT = "celeste_symphonic_suite"
@@ -47,7 +48,7 @@ def test_all_five_linux_registrations():
     for task in tasks:
         assert task.computer["setup_config"]["os_type"] == "linux"
         assert "project/project.ardour" in task.description
-        assert "20%" in task.description and "80%" in task.description
+        assert "20%" not in task.description and "80%" not in task.description
         assert "before downstream group or" in task.description
         assert "Keep all original routing and group/master effects" in task.description
         assert "Do not delete, transpose or rearrange music" in task.description
@@ -96,7 +97,7 @@ def test_full_delivery_identity_and_missing_denominator(tmp_path):
     for stem in delivery["stems"]:
         for passage in stem["passages"]:
             passage["native_path"] = passage["candidate_path"]
-    result = asyncio.run(audio_judge.score_delivery(delivery, tmp_path / "judgments"))
+    result = asyncio.run(audio_score.score_delivery(delivery, tmp_path / "judgments"))
     assert result["timbre_score"] == 0.5
     assert result["weighted_score"] == 0.5
     assert (
@@ -141,7 +142,10 @@ def test_unassessable_or_invalid_rating_is_not_zero(reply):
 
 
 @pytest.mark.asyncio
-async def test_official_provider_request_and_negative_not_bypassed(tmp_path):
+async def test_shared_provider_request_and_negative_not_bypassed(tmp_path, monkeypatch):
+    monkeypatch.setenv("JUDGE_BASE_URL", "https://shared.test/v1")
+    monkeypatch.setenv("JUDGE_MODEL", "gpt-6-astra")
+    monkeypatch.setenv("JUDGE_API_KEY", "shared-key")
     reference, candidate = tmp_path / "reference.wav", tmp_path / "candidate.wav"
     audio(reference)
     audio(candidate, frequency=660)
@@ -162,12 +166,13 @@ async def test_official_provider_request_and_negative_not_bypassed(tmp_path):
     }
 
     def handle(request):
-        assert str(request.url) == "https://api.openai.com/v1/chat/completions"
+        assert str(request.url) == "https://shared.test/v1/chat/completions"
+        assert request.headers["authorization"] == "Bearer shared-key"
         body = json.loads(request.content)
         assert body["model"] == "gpt-audio-1.5"
         assert body["messages"][0]["content"] == audio_judge.RUBRIC
         assert body["store"] is False
-        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(reply)}}]})
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(reply)}}]})
 
     result = await audio_judge.judge_window(
         reference,
@@ -262,10 +267,36 @@ async def test_actual_task_setup_with_runtime_adapter(tmp_path, monkeypatch):
     snapshot = Path(config.input_dir) / "project/project.ardour"
     assert snapshot.is_file()
     assert str(snapshot.parent) in snapshot.read_text()
-    assert (Path(config.software_dir) / "rubric.txt").read_text() == audio_judge.RUBRIC
+    assert (Path(config.software_dir) / "rubric.txt").read_text() == (
+        ROOT / "public/README.md"
+    ).read_text()
+    assert not (Path(config.software_dir) / "audio_metrics.py").exists()
+    assert not (Path(config.software_dir) / "audio_score.py").exists()
+    assert (Path(config.software_dir) / "native_audio.py").is_file()
+    assert (Path(config.software_dir) / "native_batch.py").is_file()
     assert not (Path(config.software_dir) / "score_audio_remote.py").exists()
     assert not Path(config.reference_dir).exists()
     assert f"python3 {config.software_dir}/rebind.py" in commands.read_text()
+    destination, software = await runtime.stage(config.to_metadata(), session, evaluating=True)
+    assert Path(software, "audio_score.py").is_file()
+    clip = tmp_path / "guest-control.wav"
+    audio(clip)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; from audio_score import score_window; "
+            "import sys, json; clip = Path(sys.argv[1]); "
+            "print(json.dumps(score_window(clip, clip, clip, Path(sys.argv[2]))))",
+            str(clip),
+            str(Path(destination) / "control.json"),
+        ],
+        cwd=software,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(completed.stdout)["score"] == 1
 
 
 @pytest.mark.asyncio
@@ -322,6 +353,7 @@ def task_hook(tmp_path, monkeypatch):
     class Interface:
         def __init__(self):
             self.written = {}
+            self.read = []
             self.command_status = 0
 
         async def run_command(self, command):
@@ -342,8 +374,18 @@ def task_hook(tmp_path, monkeypatch):
             )
 
         async def read_bytes(self, path):
+            self.read.append(path)
             if path.endswith("assessment.json"):
                 return json.dumps(assessment).encode()
+            if path.endswith("scored.json"):
+                delivery = copy.deepcopy(assessment["delivery"])
+                for entry in delivery["stems"]:
+                    for passage in entry["passages"]:
+                        for key in ("reference_path", "candidate_path", "native_path"):
+                            passage[key] = str(clip)
+                result = await audio_score.score_delivery(delivery, tmp_path / "guest-evidence")
+                return json.dumps(result).encode()
+            assert path.endswith("overview.png"), "Audio must stay in the guest"
             return payload
 
         async def write_bytes(self, path, data):
@@ -378,13 +420,13 @@ def task_hook(tmp_path, monkeypatch):
 async def test_task_hook_preserves_full_denominator_for_parity_audio(task_hook):
     config, session, assessment = task_hook
     assert await main.evaluate(config, session) == pytest.approx([0.05])
-    saved = session.interface.written["/remote/evaluator/evidence/scored.json"]
-    assert saved["weights"] == [0.2, 0.8]
-    assert len(saved["delivery"]["stems"]) == 20
-    window = saved["delivery"]["stems"][0]["judgments"][0]
-    assert window["score"] == 1
-    assert window["delivery"]["route"] == "exact_decoded_pcm"
-    assert window["native"]["reused_identical_audio"]
+    assert not session.interface.written
+    assert session.interface.read == [
+        "/remote/evaluator/evidence/assessment.json",
+        config.metadata["remote_output_dir"] + "/overview.png",
+        "/remote/evaluator/evidence/scored.json",
+    ]
+    assert not (Path(main.__file__).parent / ".evaluation").exists()
 
 
 @pytest.mark.asyncio
@@ -409,7 +451,7 @@ async def test_task_hook_infrastructure_is_not_candidate_zero(task_hook, failure
     elif failure == "worker_exit":
         session.interface.command_status = 137
     else:
-        del assessment["delivery"]["stems"][0]["passages"][0]["native_path"]
+        assessment["infrastructure_error"] = "Evaluator-native audio passage is missing"
     with pytest.raises(JudgeInfrastructureError):
         await main.evaluate(config, session)
     assert not session.interface.written

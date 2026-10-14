@@ -13,6 +13,15 @@ from tasks.utils.evaluation import JudgeInfrastructureError
 
 ROOT = Path(__file__).parent
 RUNTIME_WRAPPER = "/usr/local/bin/ale-migration-env"
+EVALUATOR_ONLY_SCRIPTS = {
+    "audio_score.py",
+    "audio_metrics.py",
+    "equivalence.py",
+    "evaluate_remote.py",
+    "native_readback.lua",
+    "project_check.py",
+    "score_audio_remote.py",
+}
 
 
 async def checked_command(session, command):
@@ -73,6 +82,12 @@ async def run_evaluator(session, command, evidence, *, timeout=7200, poll_interv
 
 
 async def stage(meta, session, *, evaluating=False):
+    await checked_command(
+        session,
+        "python3 -c 'import numpy, scipy, soundfile, mido' || "
+        "sudo -n /opt/ale-ardour/venv/bin/python3 -m pip install --no-cache-dir "
+        "'numpy>=2' 'scipy>=1.13' 'soundfile>=0.13' 'mido>=1.3'",
+    )
     registry = json.loads((ROOT / "assets/sources.json").read_text())
     entry = registry[meta["variant_name"]]
     archive = ROOT / "assets" / entry["archive"]
@@ -94,9 +109,19 @@ async def stage(meta, session, *, evaluating=False):
     payload = io.BytesIO()
     with tarfile.open(fileobj=payload, mode="w:gz") as packed:
         for path in sorted((ROOT / "scripts").iterdir()):
-            if path.is_file() and path.name != "score_audio_remote.py":
-                packed.add(path, arcname=path.name)
-        packed.add(ROOT / "rubric.txt", arcname="rubric.txt")
+            if not path.is_file() or path.name == "score_audio_remote.py":
+                continue
+            if not evaluating and path.name in EVALUATOR_ONLY_SCRIPTS:
+                continue
+            source = (
+                ROOT / "public/audio_delivery.py"
+                if not evaluating and path.name == "audio_delivery.py"
+                else path
+            )
+            packed.add(source, arcname=path.name)
+        packed.add(ROOT / ("rubric.txt" if evaluating else "public/README.md"), arcname="rubric.txt")
+        if evaluating:
+            packed.add(ROOT / "audio_score.py", arcname="audio_score.py")
     await session.write_bytes(f"{destination}/tools.tar.gz", payload.getvalue())
     commands = [
         shlex.join(["mkdir", "-p", software]),
@@ -104,6 +129,11 @@ async def stage(meta, session, *, evaluating=False):
         shlex.join(["python3", f"{software}/rebind.py", f"{destination}/project/project.ardour"]),
         shlex.join(["rm", f"{destination}/source.tar.gz", f"{destination}/tools.tar.gz"]),
     ]
+    if not evaluating:
+        commands.insert(
+            0,
+            shlex.join(["rm", "-f", *(f"{software}/{name}" for name in sorted(EVALUATOR_ONLY_SCRIPTS))]),
+        )
     for command in commands:
         await checked_command(session, command)
     return destination, software

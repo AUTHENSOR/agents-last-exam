@@ -104,6 +104,14 @@ class Bindings:
         except Exception as error:
             raise CandidateFailure(f"Invalid candidate BPMN XML: {error}") from error
         self.graph = topology.BPMNGraph(root)
+        self.expressions = {
+            element.text.strip()
+            for element in root.iter()
+            if self.graph._local(element.tag) == "conditionExpression"
+            and element.text
+            and element.text.strip().startswith(("${", "#{"))
+            and element.text.strip().endswith("}")
+        }
         self.discovered = topology.discover_nodes(self.graph)
         self.task_roles = {}
         for canonical, role in TASK_ROLES.items():
@@ -544,7 +552,9 @@ def run_case(
                     },
                 )
             except FlowableResponseError as error:
-                exception = error.payload.get("exception", "")
+                exception = error.payload.get("exception", "") if isinstance(error.payload, dict) else ""
+                if not isinstance(exception, str):
+                    raise
                 match = re.fullmatch(
                     "No outgoing sequence flow of element '([^']+)' could be selected for continuing the process",
                     exception,
@@ -634,6 +644,22 @@ def run_case(
         )
     except CandidateFailure as error:
         result["failure"] = str(error)
+    except FlowableResponseError as error:
+        exception = error.payload.get("exception", "") if isinstance(error.payload, dict) else ""
+        match = (
+            re.fullmatch(r"Unknown property used in expression: (.+)", exception)
+            if isinstance(exception, str)
+            else None
+        )
+        if error.status == 500 and match and match[1].strip() in binding.expressions:
+            api.request("GET", "management/engine")
+            result["failure"] = str(error)
+            result["expression_failure_evidence"] = {
+                "response": error.payload,
+                "candidate_expression": match[1].strip(),
+            }
+        else:
+            result["evaluation_error"] = str(error)
     except EvaluationError as error:
         result["evaluation_error"] = str(error)
     finally:

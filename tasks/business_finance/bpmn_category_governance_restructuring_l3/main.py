@@ -194,7 +194,7 @@ You may also write `{self.agent_output_dir}/deployment_log.json` as an optional 
 ## Validation Expectations
 Your output must satisfy the structural topology, scenario-summary, compliance, anti-gaming, data-flow, role-coupling, and design-decision requirements described in `{self.task_prompt_file}`.
 
-The evaluator independently deploys your exact BPMN and executes the 55 runtime scenarios, then computes the five structural anti-gaming probes. Passing requires at least 57/60 and all five probes; submitted pass flags are not evidence of execution.
+Deploy your exact BPMN and exercise the supplied scenarios. Record the observed results in `test_results.json`.
 
 Scenario inputs and task outputs take precedence over ordinary manual-completion defaults. Unless a scenario explicitly requests additional execution feedback, execution produces `out_execution_report="completed"` and `out_execution_needs_replan=false`; a campaign-cadence closeout acknowledges `out_cycle_closed=true`. A compliance-handled acknowledgement follows the scenario's `brandRiskReassessed` outcome when that task completes. These values are assigned only to declared writable form properties, accepting `in_`/`out_` naming variants and explicit Flowable `variable` bindings. Task IDs may differ except for anchored IDs. Other unspecified routing decisions are not guessed from your gateway conditions.
 

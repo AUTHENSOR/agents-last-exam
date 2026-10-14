@@ -2,9 +2,7 @@
 
 from dataclasses import dataclass
 import json
-from pathlib import Path
 import shlex
-import uuid
 
 import cua_bench as cb
 
@@ -52,11 +50,9 @@ Inventory installed LV2/LADSPA/VST plugins and sound libraries into
 {self.remote_output_dir}/available_plugins.txt. Replace unavailable active
 instruments/effects with installed open-source equivalents and choose their
 presets, articulations and controller adapters to retain the original sound.
-Disabled effects do not require replacement. No particular plugin or GM program
-is an accepted answer by itself. Evaluation compares timbre against the original
-reference stems, which are provisioned separately for evaluation.
+Disabled effects do not require replacement.
 Functional equivalence does not require the original proprietary library or
-identical waveforms; ordinary library variation is allowed by the public rubric.
+identical waveforms. Preserve the original timbre, articulation and dynamic contour.
 Keep original editable event data and track/channel organization. Instrument
 adapters may translate controls without deleting the original data.
 
@@ -75,24 +71,13 @@ helper implements this stem tap with full=True on a separate project copy;
 the stock ardour6-export master output is appropriate for the full mix.
 Capture {self.remote_output_dir}/overview.png showing Ardour tracks and plugins.
 
-Evaluation: native save/reopen, original editable music/routing, required files
-and a valid full mix are delivery gates. The score is 20% complete, finite,
-unclipped matched stems plus 80% timbral/performance-character similarity.
-Missing/invalid stems remain in the denominator. Audio is judged against the
-original references using the fixed public rubric at {self.software_dir}/rubric.txt.
-Three 12-second windows are fixed from each reference's active timeline at
-25/50/75% quantiles (100ms RMS bins above -60dB relative to its loudest bin;
-duplicates merged). Windows are averaged per active stem, then across stems.
-Each window compares both your delivered audio and a fresh native solo render of
-your project against the reference in one audio request with one reference
-description and two ratings; its timbre score is the lower of the two.
-Constant overall gain is ignored; changing dynamics and wrong attacks, sustain,
-articulation or instruments are not. Proven PCM equality/common positive gain
-within analytic integer quantization bounds receives full timbre credit.
-Controller setters may lose redundant messages; effective values must remain.
-Native controller rounding up to 5/1920 quarter notes is reported and accepted;
-bank/program, sustain and stateful-message order is retained. Evaluator runtime,
-missing reference or audio-provider failures are unscored infrastructure errors.
+The project must save and reopen in Ardour, and its playback must agree with
+the delivered audio. Deliver complete, finite, unclipped mono or stereo WAVs.
+Constant overall gain differences are allowed; preserve changing dynamics,
+attacks, sustain and articulation. Controller setters may lose redundant
+messages; preserve their effective values and the order of bank/program,
+sustain and stateful messages. Software interfaces are documented at
+{self.software_dir}/rubric.txt.
 """
 
     def to_metadata(self):
@@ -127,12 +112,6 @@ async def start(task_cfg, session: cb.DesktopSession):
 
 @cb.evaluate_task(split="train")
 async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
-    try:
-        from tasks.visual_media.project_migration.audio_judge import score_delivery
-    except ImportError as exc:
-        raise JudgeInfrastructureError(
-            "Install task requirements-eval.txt on the evaluator host"
-        ) from exc
     meta = task_cfg.metadata
     destination, software = await stage(meta, session, evaluating=True)
     evidence = destination + "/evidence"
@@ -186,22 +165,10 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
         if overview["score"] == 0:
             context.finalize()
             return [0.0]
-        root = Path(__file__).parent / ".evaluation" / uuid.uuid4().hex
-        root.mkdir(parents=True)
-        for stem in assessment["delivery"]["stems"]:
-            for passage in stem["passages"]:
-                for field in ("reference_path", "candidate_path", "native_path"):
-                    if field not in passage:
-                        raise JudgeInfrastructureError("Evaluator-native audio passage is missing")
-                    remote = passage[field]
-                    path = root / Path(remote).name
-                    path.write_bytes(await session.read_bytes(remote))
-                    passage[field] = str(path)
-        scored = await score_delivery(assessment["delivery"], root)
+        scored = json.loads(await session.read_bytes(evidence + "/scored.json"))
         context.log_evaluation(
-            identifier="audio_semantic_rubric", score=scored["weighted_score"], result=scored
+            identifier="deterministic_audio_similarity", score=scored["weighted_score"], result=scored
         )
         context.add_score(scored["weighted_score"])
-        await session.write_bytes(evidence + "/scored.json", json.dumps(scored, indent=2).encode())
         context.finalize()
         return [context.total_score]

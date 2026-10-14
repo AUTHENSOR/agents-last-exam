@@ -126,9 +126,9 @@ visible instability or a persistent tracking deficit beyond this final-step exce
 provided the motion is mostly executed without an unrecovered failure.
 An unrecovered fall that prevents completion is failed, even if tracking was
 initially good. For a get-up motion, judge the recovery, not the scripted fall.
-Describe visible robot/reference tracking; do not infer stair contacts or stair
-completion from a render that does not show the stair geometry. An abrupt
-endpoint reset is not a successful recovery.
+Descriptions must be grounded in the recorded robot/reference behavior.
+Only describe terrain contacts or obstacle completion when the relevant
+geometry is visible. A playback reset does not count as a physical recovery.
 
 ## Output Requirements
 - The final answer must include `policy_evaluation_report.json` and a

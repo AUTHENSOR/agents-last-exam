@@ -15,6 +15,7 @@ import cua_bench as cb
 
 from tasks.common_config import GeneralTaskConfig
 from tasks.common_setup import BaseTaskSetup
+from tasks.utils.evaluation import judge_config
 from tasks.visual_media.skeletal_animation_reproduction._shared_eval import (
     compute_final_score,
     compute_local_metrics,
@@ -634,7 +635,7 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
             )
             / 3.0
         )
-        if os.environ.get("OPENAI_API_KEY"):
+        if judge_config()["api_key"]:
             try:
                 vlm_score = run_local_soft_eval(
                     reference_sheet=bundle["reference_sheet"],

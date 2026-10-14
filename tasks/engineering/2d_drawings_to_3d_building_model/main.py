@@ -103,7 +103,7 @@ All input materials are under:
   {self.input_dir}
 
 Required files:
-- README.md — natural-language task brief (open this first)
+- README.md — natural-language task brief
 - output_contract.json — machine-readable spec (file names, formats,
   coordinate convention, required geometry components)
 - architectural_drawings/*.pdf — 6 drawings (Hall plans + Tower plan +
@@ -116,14 +116,14 @@ Blender 4.5 is installed at /opt/blender-4.5.1/blender. GUI and scripting
 workflows are both allowed; rendering and evaluation work on a CPU.
 
 ## What You Must Do
-1. Read README.md and output_contract.json.
-2. Open the PDFs and import base_model.obj into Blender. It gives the Hall footprint
-   and axis orientation. Keep the dimensions, orientation and ground-floor elevation.
-3. Build the geometry (Hall + Tower + facades + structural framing +
+- Read README.md and output_contract.json. Open the PDFs and import
+  base_model.obj into Blender for the Hall footprint and axis orientation.
+  Keep the dimensions, orientation and ground-floor elevation.
+- Build the geometry (Hall + Tower + facades + structural framing +
    modules + mezzanines + glass curtain wall).
-4. Export to {self.output_obj} (Wavefront OBJ ASCII) and
+- Deliver {self.output_obj} (Wavefront OBJ ASCII) and
    {self.output_blend} (Blender native). Both must contain the same
-   evaluated geometry within 1 mm, including applied modifiers and instances.
+   evaluated geometry, including applied modifiers and instances.
    Mesh organization, object names and triangulation are unrestricted.
    Pack linked geometry so the saved project reopens independently.
 
@@ -133,9 +133,7 @@ workflows are both allowed; rendering and evaluation work on a CPU.
 - Common X/Y translation of the complete model is allowed. Evaluation centers
   the views independently; absolute horizontal origin is not scored. Relative
   placement of Hall, Tower, structure and workshop modules remains required.
-- The evaluator will render 14 canonical views from your model.obj and
-  compare them to a hidden reference using a multimodal LLM judge.
-- The eight equally weighted criteria are Hall/Tower proportions, floor levels,
+- Reproduce the Hall/Tower proportions, floor levels,
   Tower placement, the solid north Hall facade, the open south structural frame,
   the Tower curtain-wall mullions, workshop-module placement, and the four
   elevation silhouettes. Materials and textures are not scored.

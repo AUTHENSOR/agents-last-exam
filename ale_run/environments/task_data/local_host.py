@@ -25,7 +25,7 @@ import os
 from typing import Any
 
 from ...base_interface import SandboxHandle, TaskDataSpec
-from . import join, shell_q, task_subdir
+from . import join, prepare_task_subdir, shell_q, task_subdir
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ async def stage_input(
             f"task_data_source=local: expected input/ at {host!r} on the host, "
             f"not found. Did you fetch the task data? (see the local-docker README)"
         )
-    base = task_subdir(sandbox, task_data)
+    base = await prepare_task_subdir(sandbox, task_data)
     # Make the target dirs first, then ``docker cp <src>/. <dst>`` copies the
     # CONTENTS into them — correct whether or not the dir pre-exists (a baked
     # image may already have <base>/input; plain `cp src dst` would nest it).

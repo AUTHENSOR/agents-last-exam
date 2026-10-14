@@ -139,14 +139,18 @@ def metric_stats(results_raw: Path) -> dict[str, dict[str, float | bool]]:
 
 def bh_correct(p_values: dict[str, float]) -> dict[str, dict[str, float | bool]]:
     ordered = sorted(p_values.items(), key=lambda item: item[1])
-    m = len(ordered)
+    metric_count = len(ordered)
+    last_passing_rank = max(
+        (rank for rank, (_, p_value) in enumerate(ordered, 1) if p_value <= rank / metric_count * 0.05),
+        default=0,
+    )
     out: dict[str, dict[str, float | bool]] = {}
-    for idx, (metric, p_val) in enumerate(ordered, start=1):
-        threshold = idx / m * 0.05
+    for rank, (metric, _) in enumerate(ordered, start=1):
+        threshold = rank / metric_count * 0.05
         out[metric] = {
-            "bh_rank": float(idx),
+            "bh_rank": float(rank),
             "bh_threshold": threshold,
-            "bh_significant": p_val <= threshold,
+            "bh_significant": rank <= last_passing_rank,
         }
     return out
 

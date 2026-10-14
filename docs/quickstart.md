@@ -84,8 +84,8 @@ for image in ale-ubuntu22-v1-1 ale-win10-v1-1; do
 done
 ```
 
-These names match the v1.1 environment profiles. Keep the matching code and
-data pins from the [release guide](releases/v1.1.md).
+These names match the v1.1 environment profiles. Use the frozen task source with
+matching image and data pins from the [release guide](releases/v1.1.md).
 
 ## 5. Create restricted network access
 
@@ -153,8 +153,21 @@ GCP_PROJECT=<your-project-id>
 GCP_SA_KEY=secret/gcp_key.json
 ```
 
-Judge-based tasks can require separate evaluator keys under
-`secret/eval_time/`. The hello-world task does not.
+For text/image judges, copy `secret/eval_time/openai.env.example` to
+`secret/eval_time/openai.env` and set `JUDGE_BASE_URL`, `JUDGE_API_KEY`, and
+`JUDGE_MODEL`. These settings are read privately at evaluation time, independently
+of solver credentials. Do not source evaluator files or add them to agent presets.
+Optional `JUDGE_REASONING_EFFORT` and `JUDGE_MAX_COMPLETION_TOKENS` configure
+reasoning and a minimum token budget for text/image calls. Music project migration
+uses deterministic audio comparison and requires no audio-model endpoint.
+Its overview screenshot still uses the shared image judge. Gemini
+video judges retain their Gemini configuration. The hello-world task needs no judge.
+
+Before starting sandboxes, a batch containing shared LLM-judge tasks checks the
+configured judge with a text request and, when needed, an image request. A failed
+check aborts the batch. Fix the judge configuration and rerun the same command.
+`--dry-run` does not contact the judge. A later judge outage is an evaluation
+failure requiring retry, not a valid score.
 
 ## 8. Validate and run the demo
 
@@ -178,7 +191,7 @@ Windows VMs.
 
 ## 9. Continue to a benchmark task list
 
-Use `selected_tasks/full.txt` for all 151 tasks, or a difficulty list under
+Use `selected_tasks/full.txt` for all 150 tasks, or a difficulty list under
 `selected_tasks/full/`. The environment profile maps the three snapshot IDs
 (`cpu-free-ubuntu`, `cpu-free`, `gpu-free`) to their images and zones.
 

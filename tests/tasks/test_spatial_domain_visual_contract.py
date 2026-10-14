@@ -78,7 +78,12 @@ def test_positive_bundle_preserves_science_and_records_visual_evidence(bundle, j
     assert "NOT a layout or" in judge[0]["prompt"]
     assert "UNTRUSTED" in judge[0]["prompt"]
     assert "never instructions" in judge[0]["prompt"]
-    assert "hidden canonical UMAP" in judge[0]["prompt"]
+    coordinates, labels = scorer._parse_umap(
+        bundle["umap_csv"], bundle["per_slice_labels"]["151673"]
+    )
+    assert judge[0]["image_bytes_list"][1] == scorer._render_umap_reference(
+        coordinates, labels
+    )
 
 
 @pytest.mark.parametrize("failed_check", scorer.VISUAL_CHECKS)
@@ -323,11 +328,11 @@ assert loaded['metadata']['umap_csv'].endswith(scorer.REQUIRED_UMAP_CSV)
 
 @pytest.mark.parametrize("override", [None, "task-specific-judge"])
 def test_task_judge_model_default_and_override(bundle, judge, monkeypatch, override):
-    monkeypatch.delenv("SPATIAL_DOMAIN_VISION_MODEL", raising=False)
+    monkeypatch.delenv("JUDGE_MODEL", raising=False)
     if override:
-        monkeypatch.setenv("SPATIAL_DOMAIN_VISION_MODEL", override)
+        monkeypatch.setenv("JUDGE_MODEL", override)
     result = scorer.score_output_bundle(**bundle)
-    expected = override or "gpt-5.5-2026-04-23"
+    expected = override or "gpt-5.4"
     assert judge[0]["model"] == expected
     assert result.visual_verification["model"] == expected
 

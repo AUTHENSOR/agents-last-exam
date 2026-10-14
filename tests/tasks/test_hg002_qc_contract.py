@@ -8,6 +8,8 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -45,8 +47,20 @@ def write_multiqc(sub, modules=MODULES, versions=None):
     write_tsv(
         data / "multiqc_software_versions.txt", versions or [["Software", "Version"], *VERSIONS]
     )
+    write_dup_counts(sub)
     (reports / "multiqc_report.html").write_text("<html><body>QC report</body></html>")
     return data
+
+
+def write_dup_counts(sub, rows=None):
+    path = sub / "results/reports/multiqc_data/multiqc_picard_dups.txt"
+    write_tsv(path, [
+        ["Sample", "LIBRARY", "UNPAIRED_READS_EXAMINED", "READ_PAIRS_EXAMINED",
+         "UNPAIRED_READ_DUPLICATES", "READ_PAIR_DUPLICATES",
+         "READ_PAIR_OPTICAL_DUPLICATES", "UNMAPPED_READS", "PERCENT_DUPLICATION"],
+        *(rows if rows is not None else [["HG002", "library", 0, 1000, 0, 10, 5, 100, 0.01]]),
+    ])
+    return path
 
 
 def write_samplesheet(sub, **changes):
@@ -376,6 +390,97 @@ def test_complete_synthetic_submission_preserves_scoring_weights(complete_submis
     }
 
 
+@pytest.mark.parametrize("reported,points", [(0.0004, 100), (0.000004, 95)])
+def test_duplicate_fraction_is_checked_against_raw_counts(complete_submission, reported, points):
+    sub, hidden = complete_submission
+    write_dup_counts(sub, [["HG002", "library", 2.0, 25000.0, 0.0, 10.0, 4, 100, 0.04]])
+    path = sub / "results/qc/qc_summary.json"
+    qc = json.loads(path.read_text())
+    qc["dup_rate"] = reported
+    path.write_text(json.dumps(qc))
+    report = scorer.evaluate(sub, hidden)
+    assert report.hard_pass and report.total_points == points
+    gate = next(result for result in report.scored_gates if result.name == "dup_rate")
+    assert "20/50002=" in gate.detail
+    assert all(result.passed for result in report.scored_gates if result.name != "dup_rate")
+
+
+def test_duplicate_ratio_weights_libraries_and_ignores_optical_and_unmapped_counts(tmp_path):
+    write_dup_counts(tmp_path, [
+        ["HG002", "first", 100, 50, 10, 5, 5, 10000, 99],
+        ["HG002", "second", 0, 900, 0, 0, 0, 100, 99],
+        ["other_sample", "other", 1000, 1000, 900, 900, 0, 0, 99],
+    ])
+    result = scorer.gate_dup_rate({"dup_rate": 0.01}, tmp_path)
+    assert result.passed and result.points == 5
+    assert "20/2000=0.01" in result.detail
+    assert not scorer.gate_dup_rate({"dup_rate": 0.05}, tmp_path).passed
+
+
+@pytest.mark.parametrize("reported", [0.01, 0.13])
+def test_raw_duplicate_ratio_still_obeys_quality_gate(tmp_path, reported):
+    write_dup_counts(tmp_path, [["HG002", "library", 0, 1000, 0, 130, 0, 0, 0.01]])
+    result = scorer.gate_dup_rate({"dup_rate": reported}, tmp_path)
+    assert not result.passed and result.points == 0
+    assert "260/2000=0.13" in result.detail
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing", "missing_column", "duplicate_column", "ragged", "no_sample", "zero",
+     "nan", "infinity", "negative", "fractional", "excess_pairs", "excess_unpaired"],
+)
+def test_unverifiable_duplicate_counts_lose_only_duplicate_credit(complete_submission, mutation):
+    sub, hidden = complete_submission
+    path = write_dup_counts(sub)
+    rows = list(csv.reader(path.read_text().splitlines(), delimiter="\t"))
+    if mutation == "missing":
+        path.unlink()
+    else:
+        if mutation == "missing_column":
+            rows[0][2] = "wrong_column"
+        elif mutation == "duplicate_column":
+            rows[0][1] = rows[0][2]
+        elif mutation == "ragged":
+            rows[1].pop()
+        elif mutation == "no_sample":
+            rows[1][0] = "other_sample"
+        elif mutation == "zero":
+            rows[1][2:6] = [0, 0, 0, 0]
+        elif mutation == "excess_unpaired":
+            rows[1][4] = 1
+        else:
+            rows[1][5] = {
+                "nan": "NaN", "infinity": "inf", "negative": -1,
+                "fractional": 1.5, "excess_pairs": 1001,
+            }[mutation]
+        write_tsv(path, rows)
+    report = scorer.evaluate(sub, hidden)
+    assert report.hard_pass and report.total_points == 95
+    assert all(result.passed for result in report.scored_gates if result.name != "dup_rate")
+
+
+async def test_evaluation_downloads_raw_duplicate_counts(complete_submission, tmp_path, monkeypatch):
+    from tasks.life_sciences.hg002_chr22_germline_variant_pipeline import main
+
+    sub, hidden = complete_submission
+    for filename in ("HG002_GRCh38_v4.2.1_chr22.vcf.gz.tbi", "clinvar.chr22.vcf.gz.tbi"):
+        (hidden / filename).write_bytes(b"test index presence only")
+    session = SimpleNamespace(
+        file_exists=AsyncMock(side_effect=lambda path: Path(path).is_file()),
+        directory_exists=AsyncMock(side_effect=lambda path: Path(path).is_dir()),
+        read_bytes=AsyncMock(side_effect=lambda path: Path(path).read_bytes()),
+    )
+    monkeypatch.setattr(main, "EVAL_TMP_ROOT", tmp_path / "evaluation")
+    task_cfg = SimpleNamespace(metadata={
+        "submission_root": str(sub), "hidden_truth_dir": str(hidden), "output_dir_name": "output",
+    })
+    assert await main.evaluate(task_cfg, session) == [1.0]
+    session.read_bytes.assert_any_await(
+        str(sub / "results/reports/multiqc_data/multiqc_picard_dups.txt")
+    )
+
+
 @pytest.mark.parametrize(
     "mutation,gate",
     [
@@ -433,7 +538,6 @@ def test_prompt_card_expose_identical_qc_contract():
     assert "relative FASTQ paths" in prompt and "relative FASTQ paths" in card["taskPrompt"]
     assert contract == card["taskPrompt"].split("6. Aggregate QC")[1].split("7. Explain")[0]
     for requirement in [
-        "five-point",
         "FastQC",
         "MarkDuplicates",
         "samtools",
@@ -444,6 +548,12 @@ def test_prompt_card_expose_identical_qc_contract():
         "Version",
         "fraction",
         "flat JSON",
+        "multiqc_picard_dups.txt",
+        "UNPAIRED_READS_EXAMINED",
+        "READ_PAIRS_EXAMINED",
+        "UNPAIRED_READ_DUPLICATES",
+        "READ_PAIR_DUPLICATES",
+        "must agree",
     ]:
         assert requirement in contract
 

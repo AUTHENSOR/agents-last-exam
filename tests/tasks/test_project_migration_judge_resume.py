@@ -8,6 +8,7 @@ import soundfile as sf
 from tasks.utils.evaluation import JudgeInfrastructureError
 from tasks.visual_media.project_migration import audio_judge
 
+pytestmark = pytest.mark.usefixtures("judge_api_credentials")
 
 @pytest.fixture
 def pair(tmp_path):
@@ -40,7 +41,7 @@ async def test_invalid_json_retries_once_and_retains_both_bodies(pair, tmp_path)
     def handle(request):
         requests.append(json.loads(request.content))
         content = "not JSON" if len(requests) == 1 else json.dumps(reply())
-        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": content}}]})
 
     result = await audio_judge.judge_window(
         *pair, tmp_path / "judge.json", transport=httpx.MockTransport(handle)
@@ -60,7 +61,7 @@ async def test_repeated_invalid_json_is_infrastructure_not_zero(pair, tmp_path):
             tmp_path / "judge.json",
             transport=httpx.MockTransport(
                 lambda request: httpx.Response(
-                    200, json={"choices": [{"message": {"content": "not JSON"}}]}
+                    200, json={"choices": [{"finish_reason": "stop", "message": {"content": "not JSON"}}]}
                 )
             ),
         )
@@ -76,7 +77,7 @@ async def test_successful_negative_is_reused_without_request(pair, tmp_path):
         receipt,
         transport=httpx.MockTransport(
             lambda request: httpx.Response(
-                200, json={"choices": [{"message": {"content": json.dumps(reply())}}]}
+                200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(reply())}}]}
             )
         ),
     )
@@ -117,7 +118,7 @@ async def test_joint_request_contains_three_inputs_and_minimum(pair, tmp_path):
         judgment["candidate_a"]["rating"] = 3
         judgment["candidate_b"]["rating"] = 1
         return httpx.Response(
-            200, json={"choices": [{"message": {"content": json.dumps(judgment)}}]}
+            200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(judgment)}}]}
         )
 
     result = await audio_judge.judge_window(
@@ -131,6 +132,10 @@ async def test_joint_request_contains_three_inputs_and_minimum(pair, tmp_path):
         "Candidate B",
     ]
     assert sum(part["type"] == "input_audio" for part in content) == 3
+    audio_parts = [part["input_audio"] for part in content if part["type"] == "input_audio"]
+    assert audio_parts == [
+        {"data": audio_judge.normalized_payload(path)[0], "format": "wav"} for path in pair
+    ]
     assert result["delivery"]["score"] == 0.75
     assert result["native"]["score"] == result["score"] == 0.25
     assert (
@@ -149,7 +154,7 @@ async def test_same_candidate_reuses_fixed_delivery_rating_not_best(pair, tmp_pa
         judgment["candidate_a"]["rating"] = 1
         judgment["candidate_b"]["rating"] = 4
         return httpx.Response(
-            200, json={"choices": [{"message": {"content": json.dumps(judgment)}}]}
+            200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(judgment)}}]}
         )
 
     result = await audio_judge.judge_window(
@@ -179,12 +184,12 @@ async def test_joint_failures_are_unscored(pair, tmp_path, failure):
         else:
             judgment["candidate_b"]["reference_character"] = "a conflicting reference"
         return httpx.Response(
-            200, json={"choices": [{"message": {"content": json.dumps(judgment)}}]}
+            200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(judgment)}}]}
         )
 
     with pytest.raises(JudgeInfrastructureError):
         await audio_judge.judge_window(
             *pair, tmp_path / "failed.json", transport=httpx.MockTransport(handle)
         )
-    assert len(requests) == 1
+    assert len(requests) == (3 if failure == "http" else 1)
     assert "score" not in json.loads((tmp_path / "failed.json").read_text())

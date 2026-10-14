@@ -7,7 +7,10 @@ from ale_run.tasks.loader import TaskLoader
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RETIRED_TASK = "engineering/mold-flow"
+RETIRED_TASKS = {
+    "engineering/mold-flow",
+    "education_info/homework_grading_numerical_pdes_instance_02",
+}
 OSS_VARIANTS = {
     "engineering/2d_drawings_to_3d_building_model": "base",
     "engineering/cailian_road_highway_alignment_2": "base",
@@ -51,14 +54,14 @@ def selections():
 def test_curated_lists_only_select_existing_unique_tasks(selections):
     for name, task_ids in selections.items():
         assert len(task_ids) == len(set(task_ids)), name
-        assert RETIRED_TASK not in task_ids, name
+        assert RETIRED_TASKS.isdisjoint(task_ids), name
         for task_id in task_ids:
             assert (ROOT / "tasks" / task_id / "main.py").is_file(), (name, task_id)
 
 
 def test_release_selection_matches_task_routing(selections):
     full = set(selections["full.txt"])
-    assert len(full) == 151
+    assert len(full) == 150
     assert full == set(selections["full/overall.txt"])
     published = json.loads((ROOT / "tasks/published_tasks.json").read_text())["published"]
     assert full == set(published)
@@ -72,12 +75,12 @@ def test_release_selection_matches_task_routing(selections):
     }
     assert set(snapshots.values()) <= {"cpu-free", "cpu-free-ubuntu", "gpu-free"}
     linux = {task_id for task_id, snapshot in snapshots.items() if snapshot == "cpu-free-ubuntu"}
-    assert len(linux) == 111
+    assert len(linux) == 110
     assert set(selections["ale_cli.txt"]) == linux
     assert set(selections["docker_support.txt"]) == linux - DOCKER_EXCLUSIONS
-    assert len(selections["docker_support.txt"]) == 102
+    assert len(selections["docker_support.txt"]) == 101
     assert set(selections["cpu.txt"]) == full - CPU_EXCLUSIONS
-    assert len(selections["cpu.txt"]) == 146
+    assert len(selections["cpu.txt"]) == 145
     assert set(selections["qemu_excluded.txt"]) == CPU_EXCLUSIONS
     for name in ("cpu.txt", "full.txt", "ale_cli.txt"):
         assert OSS_VARIANTS.keys() <= set(selections[name]), name
@@ -89,8 +92,8 @@ def test_release_selection_matches_task_routing(selections):
 @pytest.mark.parametrize(
     "track,count,variants",
     [
-        ("overall", 151, set(OSS_VARIANTS)),
-        ("near-term", 67, set()),
+        ("overall", 150, set(OSS_VARIANTS)),
+        ("near-term", 66, set()),
         (
             "full-spectrum",
             54,
@@ -151,14 +154,15 @@ def test_published_oss_variant_matches_runner_selection(task_id, variant):
     assert loaded["image_category"] == "cpu-free-ubuntu"
 
 
-def test_retired_task_is_not_published_discoverable_or_loadable():
+@pytest.mark.parametrize("task_id", sorted(RETIRED_TASKS))
+def test_retired_task_is_not_published_discoverable_or_loadable(task_id):
     published = json.loads((ROOT / "tasks/published_tasks.json").read_text())["published"]
-    assert RETIRED_TASK not in published
+    assert task_id not in published
     discovered = {
         path.parent.relative_to(ROOT / "tasks").as_posix()
         for path in (ROOT / "tasks").glob("*/*/main.py")
     }
-    assert RETIRED_TASK not in discovered
-    assert not (ROOT / "tasks" / RETIRED_TASK / "task_card.json").exists()
+    assert task_id not in discovered
+    assert not (ROOT / "tasks" / task_id / "task_card.json").exists()
     with pytest.raises(FileNotFoundError, match="main.py not found"):
-        TaskLoader(str(ROOT / "tasks" / RETIRED_TASK))
+        TaskLoader(str(ROOT / "tasks" / task_id))

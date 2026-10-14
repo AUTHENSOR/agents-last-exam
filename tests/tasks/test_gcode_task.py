@@ -22,8 +22,9 @@ def test_registration_retains_all_workpieces_and_public_contract():
     for task in tasks:
         assert task.computer["setup_config"]["os_type"] == "linux"
         assert task.metadata["output_project"].endswith("/output/machining.FCStd")
-        assert "A submitted STL never substitutes" in task.description
-        assert "0.3 mm and 2.0 mm bands, weighted 70% and 30%" in task.description
+        assert "an STL alone is not a machining program" in task.description
+        assert "within 0.3 mm and all modeled surfaces within 2.0 mm" in task.description
+        assert "weighted 70% and 30%" not in task.description
         assert task.metadata["variant_name"] in task.description
     card = json.loads((main.ASSETS.parent / "task_card.json").read_text())
     expected = (

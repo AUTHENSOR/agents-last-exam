@@ -11,6 +11,7 @@ from tasks.utils.evaluation import JudgeInfrastructureError
 from tasks.visual_media.project_migration import audio_judge
 from tasks.visual_media.project_migration.scripts.equivalence import compare_pcm
 
+pytestmark = pytest.mark.usefixtures("judge_api_credentials")
 
 @pytest.fixture
 def signals(tmp_path):
@@ -151,7 +152,7 @@ async def test_joint_judgment_retains_strict_equivalence_guard(signals, tmp_path
             "candidate_b": {**component, "rating": 0},
         }
         return httpx.Response(
-            200, json={"choices": [{"message": {"content": json.dumps(judgment)}}]}
+            200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(judgment)}}]}
         )
 
     result = await audio_judge.judge_window(

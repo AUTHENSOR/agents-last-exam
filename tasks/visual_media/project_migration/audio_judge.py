@@ -1,23 +1,24 @@
-"""Host-side joint audio evaluation; credentials never enter agent inputs."""
+"""Historical audio-LLM protocol for replay diagnostics; not used by main.evaluate."""
 
 import base64
 import hashlib
 import io
 import json
-import os
 from pathlib import Path
 import uuid
 
-import httpx
 import numpy as np
 import soundfile as sf
 
-from tasks.utils.evaluation import JudgeInfrastructureError, load_eval_env
+from tasks.utils.evaluation import (
+    JudgeInfrastructureError,
+    judge_config,
+    llm_judge_completion,
+)
 from tasks.visual_media.project_migration.scripts.equivalence import compare_pcm
 
 
-RUBRIC = Path(__file__).with_name("rubric.txt").read_text()
-MODEL = "gpt-audio-1.5"
+RUBRIC = Path(__file__).with_name("legacy_audio_rubric.txt").read_text()
 PROTOCOL = "reference-candidate-a-candidate-b-v2"
 
 
@@ -101,10 +102,6 @@ def deterministic_score(reference: Path, candidate: Path) -> dict:
 
 
 async def request_comparison(reference, delivered, native, receipt, provenance, *, transport=None):
-    load_eval_env(override=True)
-    key = os.environ.get("OPENAI_API_KEY")
-    if not key and transport is None:
-        raise JudgeInfrastructureError("Official audio judge requires evaluator OPENAI_API_KEY")
     messages = [{"role": "user", "content": RUBRIC}]
     gains = []
     payload_hashes = []
@@ -125,53 +122,61 @@ async def request_comparison(reference, delivered, native, receipt, provenance, 
                 ],
             }
         )
-    body = {
-        "model": MODEL,
-        "modalities": ["text"],
-        "temperature": 0,
-        "max_completion_tokens": 1600,
-        "store": False,
-        "messages": messages,
-    }
-    request_bytes = json.dumps(body, separators=(",", ":")).encode()
     receipt.parent.mkdir(parents=True, exist_ok=True)
-    request_record = {
-        **provenance,
-        "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
-        "normalization_gains": gains,
-        "normalized_audio_sha256": payload_hashes,
-        "parameters": {key: value for key, value in body.items() if key != "messages"},
-        "rubric": RUBRIC,
-        "labels": ["Reference", "Candidate A", "Candidate B"],
-    }
-    receipt.with_suffix(".request.json").write_text(json.dumps(request_record, indent=2) + "\n")
+    request_record = {}
+    response_count = 0
+
+    async def record_request(request):
+        body = json.loads(request.content)
+        request_record.update(
+            **provenance,
+            request_sha256=hashlib.sha256(request.content).hexdigest(),
+            request_json_keys=list(body),
+            normalization_gains=gains,
+            normalized_audio_sha256=payload_hashes,
+            parameters={key: value for key, value in body.items() if key != "messages"},
+            rubric=RUBRIC,
+            labels=["Reference", "Candidate A", "Candidate B"],
+        )
+        receipt.with_suffix(".request.json").write_text(json.dumps(request_record, indent=2) + "\n")
+
+    async def record_response(response):
+        nonlocal response_count
+        response_count += 1
+        await response.aread()
+        response_receipt = receipt.with_name(
+            receipt.stem + ".response-" + uuid.uuid4().hex + ".json"
+        )
+        response_receipt.write_text(
+            json.dumps(
+                {
+                    **provenance,
+                    "attempt": response_count,
+                    "http_status": response.status_code,
+                    "request_sha256": request_record["request_sha256"],
+                    "body": response.text,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+
     try:
         for attempt in range(2):
-            async with httpx.AsyncClient(timeout=120, transport=transport) as client:
-                response = await client.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    content=request_bytes,
-                )
-            response_receipt = receipt.with_name(
-                receipt.stem + ".response-" + uuid.uuid4().hex + ".json"
+            response = await llm_judge_completion(
+                messages=messages,
+                capability="audio",
+                modalities=["text"],
+                temperature=0,
+                max_tokens=1600,
+                store=False,
+                transport=transport,
+                event_hooks={"request": [record_request], "response": [record_response]},
             )
-            response_receipt.write_text(
-                json.dumps(
-                    {
-                        **provenance,
-                        "attempt": attempt + 1,
-                        "http_status": response.status_code,
-                        "request_sha256": request_record["request_sha256"],
-                        "body": response.text,
-                    },
-                    indent=2,
-                )
-                + "\n"
-            )
-            response.raise_for_status()
+            if not response.choices or response.choices[0].finish_reason != "stop":
+                raise JudgeInfrastructureError("Audio judge returned an incomplete response")
+            raw = response.model_dump(mode="json", exclude_unset=True)
             try:
-                raw = response.json()
                 judgment = json.loads(raw["choices"][0]["message"]["content"])
             except json.JSONDecodeError:
                 if attempt == 0:
@@ -183,14 +188,7 @@ async def request_comparison(reference, delivered, native, receipt, provenance, 
                 "normalization_gains": gains,
                 "request_sha256": request_record["request_sha256"],
             }
-    except (
-        httpx.HTTPError,
-        ValueError,
-        KeyError,
-        IndexError,
-        TypeError,
-        JudgeInfrastructureError,
-    ) as exc:
+    except Exception as exc:
         receipt.write_text(
             json.dumps({**provenance, "infrastructure_error": type(exc).__name__}, indent=2) + "\n"
         )
@@ -210,7 +208,7 @@ async def judge_window(
 ) -> dict:
     provenance = {
         "protocol": PROTOCOL,
-        "model": MODEL,
+        "model": judge_config(capability="audio")["model"],
         "rubric_sha256": hashlib.sha256(RUBRIC.encode()).hexdigest(),
         "reference_sha256": hashlib.sha256(reference.read_bytes()).hexdigest(),
         "delivery_sha256": hashlib.sha256(delivered.read_bytes()).hexdigest(),

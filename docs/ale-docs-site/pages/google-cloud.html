@@ -149,10 +149,11 @@ gcloud storage buckets add-iam-policy-binding "gs://$GCP_BUCKET" \
 GCP_SA_KEY=secret/gcp_key.json</code></pre>
     <p>
       The shipped <code>configs/environments/environment_gcloud.yaml</code> maps all
-      three task snapshots to the versioned v1.1 images. Preserve the
+      three task snapshots to the versioned v1.1 images. Use the frozen task
+      source with the matching image and data
       <a href="/pages/configure.html#v1-1">release pins</a>. Start with the shipped
       <code>example_exp.yaml</code> (a <code>demo/hello</code> smoke), then use
-      <code>selected_tasks/full.txt</code> for all 151 tasks, or a difficulty
+      <code>selected_tasks/full.txt</code> for all 150 tasks, or a difficulty
       list under <code>selected_tasks/full/</code>.
     </p>
 

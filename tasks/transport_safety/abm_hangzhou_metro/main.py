@@ -180,7 +180,7 @@ What you must do:
 
 Rules:
 - Keep trip identity aligned to the visible AFC records.
-- Every trip completed by the public model under your declared seed is required; do not invent output for unserved demand. Scoring recomputes from public inputs, not a hidden historical answer table.
+- Every trip completed by the public model under your declared seed is required; do not invent output for unserved demand.
 - Do not modify files under `input/`.
 - Keep final deliverables at the output-directory root.
 - If you use the staged Python runtime, the helper wrappers may create task-local state under `{self.runtime_state_dir}`.

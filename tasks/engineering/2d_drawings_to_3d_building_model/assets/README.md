@@ -38,18 +38,9 @@ prompt. The OBJ must contain actual polygon geometry in millimeters, +Z up.
 The Blender file must reopen with the same evaluated surfaces, including
 modifiers and instances. Pack external geometry dependencies. Object names,
 object counts, polygon counts and triangulation are unrestricted. The two
-representations must agree to within 1 mm. Do not submit DWG files.
+representations must contain the same evaluated geometry. Do not submit DWG files.
 
-## Evaluation
-
-The evaluator checks the two submitted representations and renders the OBJ with
-Blender on a CPU. It compares 14 architectural views: four plans, four elevations,
-two sections and four corner axonometrics. A visual judge assesses eight equally
-weighted criteria: Hall/Tower proportions, floor levels, Tower placement, the
-solid north Hall facade, the open south structural frame, the Tower curtain-wall
-mullions, workshop-module placement and elevation silhouettes. Final score is
-the fraction of these criteria satisfied. Materials and textures are not scored.
-
-This is not pixel matching. Equivalent architectural geometry and different
-mesh organization are acceptable. Missing or unreadable required deliverables,
-inconsistent native/OBJ geometry, or forbidden DWG output receive zero.
+Materials and textures are outside the required scope. Equivalent architectural
+geometry and different mesh organization are acceptable. The complete model
+must reproduce the proportions, floor levels, relative placement, facade
+features and elevation silhouettes shown in the drawings.

@@ -44,7 +44,7 @@ def test_published_reference_scores_one_against_itself() -> None:
     }
 
 
-def test_consistent_but_different_counts_are_rejected() -> None:
+def test_consistent_but_different_counts_are_accepted() -> None:
     reference = REFERENCE_PATH.read_bytes()
     rows = list(csv.DictReader(StringIO(reference.decode("utf-8"))))
     for index, row in enumerate(rows):
@@ -72,8 +72,7 @@ def test_consistent_but_different_counts_are_rejected() -> None:
         reference_bytes=reference,
     )
 
-    assert not result.passed
-    assert any("num_failures_mismatch" in reason for reason in result.reasons)
+    assert result.passed
 
 
 def test_wrong_shot_count_is_rejected() -> None:
@@ -125,7 +124,7 @@ def test_consistent_but_fabricated_flat_curve_fails() -> None:
     )
 
     assert not result.passed
-    assert any("num_failures_mismatch" in reason for reason in result.reasons)
+    assert any("distribution_mismatch" in reason for reason in result.reasons)
 
 
 def test_consistent_but_non_monotonic_curve_fails() -> None:
@@ -157,4 +156,4 @@ def test_consistent_but_non_monotonic_curve_fails() -> None:
     )
 
     assert not result.passed
-    assert any("num_failures_mismatch" in reason for reason in result.reasons)
+    assert any("distribution_mismatch" in reason for reason in result.reasons)

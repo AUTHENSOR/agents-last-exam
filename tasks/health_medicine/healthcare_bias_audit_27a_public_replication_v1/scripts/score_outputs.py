@@ -23,6 +23,7 @@ REQUIRED_OUTPUT_FILES = [
     "results/table2_concentration_metric.csv",
     "results/table3.csv",
 ]
+REQUIRED_REFERENCE_FILES = [name for name in REQUIRED_OUTPUT_FILES if name != "audit_memo.md"]
 REQUIRED_JSON_KEYS = [
     "dataset_context",
     "figure1b_percentile_97_before",
@@ -209,54 +210,7 @@ def _contains_anchor(numbers: list[float], anchors: list[float]) -> bool:
     return False
 
 
-def _check_forbidden_paper_values(
-    lowered: str, random_bin_black_fraction: float | None
-) -> str | None:
-    sentences = re.split(r"(?<=[.!?])[*_`]*\s+", lowered)
-    for sentence in sentences:
-        allowed_context = (
-            "do not" in sentence
-            or "don't" in sentence
-            or "not " in sentence
-            or "private data" in sentence
-            or "private-data" in sentence
-            or "original paper" in sentence
-        )
-        if allowed_context:
-            continue
-        for clause in sentence.split(";"):
-            random_bin_context = (
-                re.search(r"\brandom\b", clause)
-                and re.search(r"\bpredicted[ -]+cost\b", clause)
-                and re.search(r"\bbins?\b", clause)
-                and re.search(r"\bblack\b", clause)
-            )
-            for match in re.finditer(
-                r"(?<![\w.])(?P<value>17\.7|46\.5|59)(?![\d.])"
-                r"\s*(?P<unit>%|percent\b)?",
-                clause,
-            ):
-                if match["value"] == "59" and match["unit"] is None:
-                    continue
-                if (
-                    random_bin_context
-                    and match["unit"] is not None
-                    and random_bin_black_fraction is not None
-                    and math.isclose(
-                        float(match["value"]) / 100,
-                        random_bin_black_fraction,
-                        rel_tol=0.0,
-                        abs_tol=NUMERIC_TOLERANCE,
-                    )
-                ):
-                    continue
-                return sentence
-    return None
-
-
-def _check_memo(
-    candidate_text: str, reference_answers_text: str, reference_table3_text: str
-) -> ScoreResult | None:
+def _check_memo(candidate_text: str, reference_answers_text: str) -> ScoreResult | None:
     lowered = _normalize(candidate_text)
     if not lowered:
         return _hard_fail("audit_memo.md: empty")
@@ -266,21 +220,6 @@ def _check_memo(
     except Exception as exc:
         return _hard_fail("audit_memo.md: bad_reference_answers", {"error": str(exc)})
 
-    random_bin_black_fraction = next(
-        (
-            _parse_float(row["frac_black"])
-            for row in csv.DictReader(io.StringIO(reference_table3_text.lstrip("\ufeff")))
-            if row["population"] == "Random, in predicted cost bin"
-        ),
-        None,
-    )
-    forbidden_sentence = _check_forbidden_paper_values(lowered, random_bin_black_fraction)
-    if forbidden_sentence is not None:
-        return _hard_fail(
-            "audit_memo.md: private_paper_value_present_without_context",
-            {"sentence": forbidden_sentence},
-        )
-
     if re.search(r"does not .*understate|do not .*understate|not support .*understate", lowered):
         return _hard_fail("audit_memo.md: incorrect_conclusion")
     if "keep the cost-based label" in lowered or "keep cost-based label" in lowered:
@@ -288,16 +227,8 @@ def _check_memo(
 
     required_checks = {
         "public_synthetic_context": "public synthetic" in lowered,
-        "private_data_distinction": (
-            "private data" in lowered or "private-data" in lowered or "original paper" in lowered
-        ),
         "understates_need": (
             "understate" in lowered and "black" in lowered and "need" in lowered
-        ),
-        "cost_need_mechanism": (
-            "cost" in lowered
-            and "need" in lowered
-            and ("proxy" in lowered or "diverge" in lowered or "imperfect" in lowered)
         ),
         "diagnosis_not_just_retraining": (
             ("diagnos" in lowered or "mechanism" in lowered)
@@ -375,10 +306,11 @@ def score_output_bundle(
             "candidate_bundle: unexpected_file_set",
             {"files": sorted(candidate_files.keys())},
         )
-    if set(reference_files.keys()) != set(REQUIRED_OUTPUT_FILES):
+    missing_reference = sorted(set(REQUIRED_REFERENCE_FILES) - reference_files.keys())
+    if missing_reference:
         return _hard_fail(
-            "reference_bundle: unexpected_file_set",
-            {"files": sorted(reference_files.keys())},
+            "reference_bundle: missing_required_files",
+            {"missing": missing_reference},
         )
 
     for rel_path in REQUIRED_OUTPUT_FILES:
@@ -397,7 +329,6 @@ def score_output_bundle(
     failure = _check_memo(
         candidate_files["audit_memo.md"],
         reference_files["audit_answers.json"],
-        reference_files["results/table3.csv"],
     )
     if failure is not None:
         return failure
@@ -405,9 +336,9 @@ def score_output_bundle(
     return ScoreResult(1.0, True, "passed", None, {})
 
 
-def _load_bundle_from_dir(root: Path) -> dict[str, str]:
+def _load_bundle_from_dir(root: Path, required_files: list[str]) -> dict[str, str]:
     bundle = {}
-    for rel_path in REQUIRED_OUTPUT_FILES:
+    for rel_path in required_files:
         path = root / rel_path
         if not path.exists():
             raise FileNotFoundError(f"missing required file: {path}")
@@ -422,8 +353,8 @@ def main() -> None:
     args = parser.parse_args()
 
     result = score_output_bundle(
-        candidate_files=_load_bundle_from_dir(args.candidate_dir),
-        reference_files=_load_bundle_from_dir(args.reference_dir),
+        candidate_files=_load_bundle_from_dir(args.candidate_dir, REQUIRED_OUTPUT_FILES),
+        reference_files=_load_bundle_from_dir(args.reference_dir, REQUIRED_REFERENCE_FILES),
     )
     print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
 

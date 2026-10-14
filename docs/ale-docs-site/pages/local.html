@@ -21,7 +21,7 @@
     <div class="note">
       <div class="note-title">Supported, CPU-only</div>
       Use <code>configs/environments/qemu.yaml</code> with
-      <code>selected_tasks/cpu.txt</code> for 146 selected CPU tasks.
+      <code>selected_tasks/cpu.txt</code> for 145 selected CPU tasks.
       GPU passthrough is outside the current provider scope.
     </div>
 
@@ -89,9 +89,15 @@ ps -eo pid,comm,args | rg '[q]emu-system'</code></pre>
     </p>
 
     <p>
-      Use the v1.1 Linux and Windows disks with matching task code and data.
+      Use the v1.1 Linux and Windows disks with the frozen task source and
+      matching data.
       Retain the immutable <code>image_revision</code> in each snapshot of the
       shipped profile; see <a href="/pages/configure.html#v1-1">release pins</a>.
+    </p>
+    <p>
+      The standalone data release covers 150 active tasks. VM disks retain an
+      inactive PDE data payload with no corresponding task implementation or
+      selection-list entry; it does not add a benchmark task.
     </p>
 
     <h2>Disk sources</h2>
@@ -138,8 +144,8 @@ uv run python -m ale_run run local_vm_demo.yaml</code></pre>
 
     <h2>Task coverage</h2>
     <p>
-      <code>cpu.txt</code> contains 146 CPU tasks:
-      all 111 <code>cpu-free-ubuntu</code> tasks and 35 <code>cpu-free</code>
+      <code>cpu.txt</code> contains 145 CPU tasks:
+      all 110 <code>cpu-free-ubuntu</code> tasks and 35 <code>cpu-free</code>
       Windows tasks. The five selected Windows GPU tasks require the GCloud
       GPU profile and are excluded from QEMU.
     </p>

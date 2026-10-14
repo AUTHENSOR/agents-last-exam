@@ -111,6 +111,7 @@ Write these required artifacts under `{self.submission_root}`:
 - `results/annotation/HG002.filtered.annotated.vcf.gz` and `.tbi`
 - `results/reports/multiqc_report.html`
 - `results/reports/multiqc_data/multiqc_general_stats.txt`
+- `results/reports/multiqc_data/multiqc_picard_dups.txt`
 - `results/reports/multiqc_data/multiqc_software_versions.txt`
 - `results/qc/qc_summary.json`
 - `DECISIONS.md`
@@ -128,8 +129,14 @@ Requirements:
    `{{"alignment_rate": NUMBER, "dup_rate": NUMBER, "mean_coverage_chr22": NUMBER}}`.
    Use finite numeric values: `dup_rate` is a fraction in [0, 1], and mean
    chr22 coverage is nonnegative read depth (x). The descriptive `alignment_rate`
-   may be a fraction or percentage; it does not receive a numerical score.
-   The five-point MultiQC completeness check requires QC from all four families:
+   may be a fraction or percentage.
+   The `dup_rate` fraction must agree with this run's raw MarkDuplicates counts.
+   Preserve the MultiQC export `multiqc_data/multiqc_picard_dups.txt` under
+   `results/reports/`, with `Sample` = `HG002` and columns
+   `UNPAIRED_READS_EXAMINED`, `READ_PAIRS_EXAMINED`, `UNPAIRED_READ_DUPLICATES`,
+   and `READ_PAIR_DUPLICATES`. Include each HG002 library once; combine its raw
+   counts when reporting the sample-wide fraction. Keep the tool's full counts.
+   Include QC from all four families:
    FastQC, Picard/GATK MarkDuplicates, samtools (stats or flagstat), and mosdepth.
    Run these QC tools on this run's reads/alignment and include their data in
    the HTML report and `multiqc_general_stats.txt`. This TSV must have a `Sample`
@@ -226,6 +233,7 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
         "results/annotation/HG002.filtered.annotated.vcf.gz.tbi",
         "results/reports/multiqc_report.html",
         "results/reports/multiqc_data/multiqc_general_stats.txt",
+        "results/reports/multiqc_data/multiqc_picard_dups.txt",
         "results/reports/multiqc_data/multiqc_software_versions.txt",
         "results/qc/qc_summary.json",
     ]

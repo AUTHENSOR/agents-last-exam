@@ -96,7 +96,7 @@ RUBRIC = {
 _UNSET_SYNONYMS = ("none", "(unset)", "unset", "(empty)", "empty", "-", "")
 _UNSET_ANNOTATION_RE = re.compile(
     r"^\s*\(?\s*(?:none|unset|empty|-)\s*"
-    r"(?:;\s*default(?:\s+value)?\s+[-+]?\d+(?:\.\d+)?|"
+    r"(?:[,;]\s*ORFS\s+default|;\s*default(?:\s+value)?\s+[-+]?\d+(?:\.\d+)?|"
     r"\(\s*default(?:\s+value)?\s+[-+]?\d+(?:\.\d+)?\s*\))?\s*\)?\s*$",
     re.IGNORECASE,
 )
@@ -540,6 +540,7 @@ def gate_g11_journal(submission_dir: Path, starter_dir: Path) -> GateResult:
     sections_by_num: dict[int, str] = {}
     section_num = None
     section_level = 0
+    section_lines: list[str] = []
     for line in _journal_lines(journal_text):
         heading = re.match(r"^ {0,3}(#{1,6})[ \t]+(.+?)\s*$", line)
         if heading:
@@ -548,11 +549,13 @@ def gate_g11_journal(submission_dir: Path, starter_dir: Path) -> GateResult:
             if number:
                 section_num = int(number.group(1))
                 section_level = len(heading.group(1))
-                sections_by_num[section_num] = ""
+                section_lines = []
             elif len(heading.group(1)) <= section_level:
                 section_num = None
         if section_num is not None:
-            sections_by_num[section_num] += line + "\n"
+            section_lines.append(line)
+            if not heading and line.strip():
+                sections_by_num[section_num] = "\n".join(section_lines)
 
     def _is_stub(section: str) -> bool:
         if not section or not section.strip():
@@ -719,7 +722,9 @@ def gate_g12_anti_gaming(submission_dir: Path, starter_dir: Path, frozen_hashes:
     return GateResult("G12", RUBRIC["G12"]["name"], weight, 0.0, False, "; ".join(violations[:8]))
 
 
-def _run_docker_flow_once(work_dir: Path, env: dict[str, str] | None = None) -> int:
+def _run_docker_flow_once(
+    work_dir: Path, env: dict[str, str] | None = None, *, routing_seed: int | None = None
+) -> int:
     dockerfile = work_dir / "Dockerfile"
     match = re.search(r"FROM\s+openroad/orfs@(sha256:[0-9a-f]+)", dockerfile.read_text())
     if not match:
@@ -759,7 +764,12 @@ def _run_docker_flow_once(work_dir: Path, env: dict[str, str] | None = None) -> 
     )
     for key, value in (env or {}).items():
         command.extend(["-e", f"{key}={value}"])
-    command.extend([image, "bash", "-lc", "make run"])
+    make_command = "make run"
+    if routing_seed is not None:
+        if type(routing_seed) is not int or not 0 <= routing_seed < 2**31:
+            raise ValueError("routing_seed must be a nonnegative 32-bit integer")
+        make_command += f" OR_SEED={routing_seed}"
+    command.extend([image, "bash", "-lc", make_command])
     print(f"[docker] {' '.join(command)}", file=sys.stderr)
     return subprocess.run(command, check=False).returncode
 
@@ -771,8 +781,10 @@ def _cts_illegal_instruction_detected(work_dir: Path) -> bool:
     return CTS_ILLEGAL_INSTRUCTION_MARKER in cts_log.read_text(errors="ignore")
 
 
-def run_docker_flow(work_dir: Path, env: dict[str, str] | None = None) -> int:
-    rc = _run_docker_flow_once(work_dir, env=env)
+def run_docker_flow(
+    work_dir: Path, env: dict[str, str] | None = None, *, routing_seed: int | None = None
+) -> int:
+    rc = _run_docker_flow_once(work_dir, env=env, routing_seed=routing_seed)
     if rc == 0:
         return 0
 
@@ -788,15 +800,7 @@ def run_docker_flow(work_dir: Path, env: dict[str, str] | None = None) -> int:
         "[docker] detected CTS illegal-instruction failure; retrying with SKIP_CTS_REPAIR_TIMING=1",
         file=sys.stderr,
     )
-    return _run_docker_flow_once(work_dir, env=retry_env)
-
-
-def reseed_environment(seed: int) -> dict[str, str]:
-    return {
-        "GPL_RANDOM_SEED": str(seed),
-        "YOSYS_SEED": str(seed),
-        "OPENROAD_SEED": str(seed),
-    }
+    return _run_docker_flow_once(work_dir, env=retry_env, routing_seed=routing_seed)
 
 
 def score_submission(submission_dir: Path, starter_dir: Path, frozen_hashes: dict[str, str]) -> Report:
@@ -833,7 +837,11 @@ def gate_g9_reseed(
     shutil.copy(submission_config, reseed_dir / "flow" / "designs" / "sky130hd" / "ibex" / "config.mk")
     shutil.copy(submission_journal, reseed_dir / "JOURNAL.md")
 
-    rc = run_docker_flow(reseed_dir, env=reseed_environment(seed=20260417))
+    original_seed = parse_config_mk_exports(submission_config.read_text()).get("OR_SEED")
+    seed = 20260417
+    if original_seed is not None and _journal_value_matches(original_seed, str(seed)):
+        seed += 1
+    rc = run_docker_flow(reseed_dir, routing_seed=seed)
     if rc != 0:
         return GateResult("G9", RUBRIC["G9"]["name"], weight, 0.0, False, f"reseed flow exited {rc}")
 

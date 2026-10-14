@@ -20,6 +20,10 @@ class SafetyUnavailable(RuntimeError):
     """The supplied geometry, stream or resource budget cannot establish safety."""
 
 
+class CollisionDetected(RuntimeError):
+    pass
+
+
 def _point(values):
     point = tuple(float(value) for value in values)
     if len(point) != 3 or not all(map(math.isfinite, point)):
@@ -148,13 +152,19 @@ class SafetyReplay:
             "remaining_stock_partial_proofs": 0,
             "remaining_stock_cache_hits": 0,
             "remaining_stock_failed_upper_cuts": 0,
+            "remaining_stock_failed_lower_cuts": 0,
             "remaining_stock_refinement_failures": [],
             "remaining_stock_swept_cylinders": 0,
             "target_representation": "original native faces, including open surfaces",
             "target_face_count": len(self.target.Faces),
             "surface_deflection_mm": self.surface_deflection,
             "fcl_fast_proofs": 0,
+            "fcl_refinement_queries": 0,
+            "fcl_refined_fast_proofs": 0,
+            "fcl_query_seconds": 0.0,
+            "fcl_setup_seconds": 0.0,
             "occt_target_refinements": 0,
+            "occt_target_seconds": 0.0,
             "confirmed_collision_count": 0,
             "unavailable_check_count": 0,
             "checks": {},
@@ -166,6 +176,7 @@ class SafetyReplay:
             "machine_fixtures_checked": False,
             "toolchanger_trajectory_checked": False,
             "evidence_file": str(self.directory / "checks.jsonl"),
+            "receipt_file": str(self.directory / "receipt.json"),
         }
 
     def _budget(self):
@@ -215,11 +226,13 @@ class SafetyReplay:
 
     def _worker_query(self, message):
         self._budget()
+        began = time.monotonic()
         self.worker.stdin.write(json.dumps(message, separators=(",", ":")) + "\n")
         self.worker.stdin.flush()
         ready, unused_write, unused_error = select.select(
             [self.worker.stdout], [], [], max(0, self.deadline - time.monotonic())
         )
+        self.report["fcl_query_seconds"] += time.monotonic() - began
         if not ready:
             raise SafetyUnavailable("Native FCL query exceeded the safety time budget")
         line = self.worker.stdout.readline()
@@ -232,6 +245,7 @@ class SafetyReplay:
 
     def _start_worker(self):
         self._budget()
+        began = time.monotonic()
         vertices, triangles = self.target.tessellate(self.surface_deflection)
         mesh_file = self.directory / "target.json"
         vertex_file = self.directory / "target.vertices.f64"
@@ -275,6 +289,7 @@ class SafetyReplay:
         )
         result = self._worker_query({"op": "ready"})
         self.report["fcl_target_triangles"] = result["triangles"]
+        self.report["fcl_setup_seconds"] = time.monotonic() - began
 
     def _enclosure(self, tool):
         if tool not in self.enclosures:
@@ -339,15 +354,19 @@ class SafetyReplay:
                 self._start_worker()
             enclosure = self._enclosure(tool)
             if enclosure is not None:
-                result = self._worker_query(
-                    {
-                        "op": "check",
-                        "enclosure": enclosure,
-                        "start": start,
-                        "end": end,
-                        "padding": self.surface_deflection + error + self.tolerance,
-                    }
-                )
+                request = {
+                    "op": "check",
+                    "enclosure": enclosure,
+                    "start": start,
+                    "end": end,
+                    "padding": self.surface_deflection + error + self.tolerance,
+                }
+                result = self._worker_query(request)
+                if not result["clear"]:
+                    self.report["fcl_refinement_queries"] += 1
+                    result = self._worker_query({**request, "segments": 128})
+                    if result["clear"]:
+                        self.report["fcl_refined_fast_proofs"] += 1
                 if result["clear"]:
                     self.report["fcl_fast_proofs"] += 1
                     return {
@@ -364,7 +383,11 @@ class SafetyReplay:
                 "proof": "complete sweep disjoint from every original face bound",
             }
         target = self.part.makeCompound(faces)
-        return self._sweep(shape, start, end, target, target, error, surface=True)
+        began = time.monotonic()
+        try:
+            return self._sweep(shape, start, end, target, target, error, surface=True)
+        finally:
+            self.report["occt_target_seconds"] += time.monotonic() - began
 
     def _box(self, bounds):
         lower, upper = bounds
@@ -381,6 +404,13 @@ class SafetyReplay:
             self.report["remaining_stock_boolean_cuts"] += 1
             self._validate_solid(result, "Native remaining-stock bound", allow_empty=True)
         except (ValueError, SafetyUnavailable) as error:
+            if not upper_bound and isinstance(error, ValueError) and str(error) == "Null shape":
+                self.report["remaining_stock_failed_lower_cuts"] += 1
+                failures = self.report["remaining_stock_refinement_failures"]
+                if len(failures) < 20:
+                    failures.append({"motion": self.report["motion_count"], "reason": str(error),
+                                     "bound": "lower", "fallback": "empty collision-witness bound"})
+                return self.part.Shape()
             if not upper_bound or (isinstance(error, ValueError) and str(error) != "Null shape"):
                 raise
             self._validate_solid(stock, "Unrefined remaining-stock upper bound")
@@ -729,6 +759,8 @@ class SafetyReplay:
             self.report[field] += 1
             if len(self.report["first_issues"]) < 20:
                 self.report["first_issues"].append(row)
+            if status == "collision" and self.running:
+                raise CollisionDetected
 
     def _stock_check(self, check, role, tool, shape, start, end, error, context, feed=None):
         if _separated(
@@ -901,6 +933,9 @@ class SafetyReplay:
                 self.report["status"] = "collision"
             elif self.report["unavailable_check_count"] == 0:
                 self.report["status"] = "clear"
+        except CollisionDetected:
+            self.report["status"] = "collision"
+            self.report["terminated_after_collision"] = True
         except Exception as error:
             self.report["failure"] = {"type": type(error).__name__, "reason": str(error)}
             self.report["status"] = "unavailable"
@@ -947,11 +982,15 @@ def _fcl_worker(mesh_file):
     faces = np.memmap(mesh["faces"], dtype=np.int32, mode="r", shape=(mesh["face_count"], 3))
     model = fcl.BVHModel()
     model.beginModel(len(vertices), len(faces))
-    model.addSubModel(vertices, faces)
+    model.addSubModel(np.asarray(vertices), np.asarray(faces))
     model.endModel()
     target = fcl.CollisionObject(model)
-    angles = np.arange(32) * (2 * np.pi / 32)
-    circle = np.column_stack((np.cos(angles), np.sin(angles))) / np.cos(np.pi / 32)
+    circles = {}
+    for segments in (32, 128):
+        angles = np.arange(segments) * (2 * np.pi / segments)
+        circles[segments] = np.column_stack((np.cos(angles), np.sin(angles))) / np.cos(
+            np.pi / segments
+        )
     for line in sys.stdin:
         try:
             request = json.loads(line)
@@ -960,6 +999,8 @@ def _fcl_worker(mesh_file):
                 continue
             if request["op"] != "check":
                 raise ValueError("Unsupported FCL worker operation")
+            segments = request.get("segments", 32)
+            circle = circles[segments]
             definition = request["enclosure"]
             start, end = np.array(request["start"]), np.array(request["end"])
             radius = definition["radius"]
@@ -970,20 +1011,17 @@ def _fcl_worker(mesh_file):
                 ring = circle * radius
                 points = np.vstack(
                     [
-                        np.column_stack((ring, np.full(32, height))) + point
+                        np.column_stack((ring, np.full(segments, height))) + point
                         for point in (start, end)
                         for height in (bottom, top)
                     ]
                 )
                 hull = ConvexHull(points)
                 triangles = hull.simplices.copy()
-                for index, triangle in enumerate(triangles):
-                    first, second, third = points[triangle]
-                    if (
-                        np.dot(np.cross(second - first, third - first), hull.equations[index, :3])
-                        < 0
-                    ):
-                        triangles[index] = triangle[::-1]
+                corners = points[triangles]
+                normals = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+                reversed_faces = np.einsum("ij,ij->i", normals, hull.equations[:, :3]) < 0
+                triangles[reversed_faces] = triangles[reversed_faces, ::-1]
                 convex = fcl.Convex(
                     points,
                     len(triangles),

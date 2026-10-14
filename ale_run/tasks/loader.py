@@ -392,6 +392,7 @@ class TaskLoader:
             reference_dir=metadata.get("reference_dir"),
             reference_gcs_prefix=metadata.get("reference_gcs_prefix"),
             remote_output_dir=metadata.get("remote_output_dir"),
+            sandbox_task_name=metadata.get("sandbox_task_name"),
         )
 
     def get_setup_fn(self):

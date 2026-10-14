@@ -5,37 +5,23 @@ for semantic coverage evaluation.  Hard gates (heading structure, word count,
 explicit recommendation) remain rule-based.
 
 Requires: openai, python-dotenv (optional)
-Set OPENAI_API_KEY in environment or .env file.
+Configure JUDGE_API_KEY, JUDGE_BASE_URL and JUDGE_MODEL in secret/eval_time/.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-try:
-    from dotenv import load_dotenv
-
-    _script = Path(__file__).resolve()
-    for _ancestor in _script.parents:
-        _candidate = _ancestor / ".env"
-        if _candidate.is_file():
-            load_dotenv(_candidate)
-            break
-except ImportError:
-    pass
-
-from openai import OpenAI
+from tasks.utils.evaluation import llm_multimodal_text_sync
 
 TITLE_HEADING = "# Zscaler Screening Memo"
 DEFAULT_PASS_THRESHOLD = 0.7
 MIN_WORD_COUNT = 250
-MODEL = "gpt-4o-mini"
 
 SYSTEM_PROMPT = (
     "You are evaluating a private-equity screening memo about Zscaler. "
@@ -217,35 +203,13 @@ def _load_contract(contract_text: str | bytes | None) -> dict:
 # LLM judge
 # ---------------------------------------------------------------------------
 
-_client: OpenAI | None = None
-
-
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "OPENAI_API_KEY not set. Place it in .env or export it."
-            )
-        _client = OpenAI(api_key=api_key)
-    return _client
-
-
 def _llm_judge(text: str, question: str) -> bool:
-    resp = _get_client().chat.completions.create(
-        model=MODEL,
+    answer = llm_multimodal_text_sync(
+        system_prompt=SYSTEM_PROMPT,
+        content=f'Text:\n"""\n{text}\n"""\n\nQuestion: {question}',
         temperature=0,
         max_tokens=5,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": f"Text:\n\"\"\"\n{text}\n\"\"\"\n\nQuestion: {question}",
-            },
-        ],
-    )
-    answer = resp.choices[0].message.content.strip().lower()
+    ).lower()
     return answer.startswith("yes")
 
 

@@ -220,6 +220,25 @@ def test_unset_annotations_do_not_accept_arbitrary_suffixes():
     )
 
 
+@pytest.mark.parametrize("description", ["(unset, ORFS default)", "unset; ORFS default", "(empty, orfs default)"])
+def test_orfs_default_annotation_requires_an_unset_snapshot(description):
+    line = f"CTS_CLUSTER_SIZE: 40 -> {description}"
+    assert verifier._journal_records_diff(line, "CTS_CLUSTER_SIZE", "40", None)
+    assert not verifier._journal_records_diff(line, "CTS_CLUSTER_SIZE", "40", "20")
+    assert not verifier._journal_records_diff(line, "CTS_CLUSTER_SIZE", "20", None)
+    assert not verifier._journal_records_diff(line + " but overridden to 20", "CTS_CLUSTER_SIZE", "40", None)
+
+
+def test_orfs_default_annotation_is_checked_against_pass_snapshots(tmp_path):
+    output, starter = make_gate_fixture(tmp_path, "## Pass 1")
+    snapshot = output / verifier.PASS_LOG_DIR_REL / "config.mk.pass0"
+    snapshot.write_text("")
+    (output / "JOURNAL.md").write_text("## Pass 1\nPARAM_0: 70 -> (unset, ORFS default)\n")
+    assert verifier.gate_g11_journal(output, starter).score == 10
+    snapshot.write_text("export PARAM_0 = 45\n")
+    assert verifier.gate_g11_journal(output, starter).score == 0
+
+
 def test_whitespace_is_not_value_content():
     assert verifier._journal_records_diff(
         "  - Change: `SYNTH_ARGS` : `-abc   -def` \t->  `-ghi  -jkl`  ",
@@ -338,6 +357,34 @@ def test_standalone_standard_library_import(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert "--submission-dir" in result.stdout
+
+
+@pytest.mark.parametrize("blank_heading", ["## Pass 1", "### PASS 1", "## **Pass 1**"])
+@pytest.mark.parametrize("position", ["before", "after"])
+def test_empty_duplicate_heading_preserves_completed_pass(tmp_path, blank_heading, position):
+    output, starter = make_gate_fixture(tmp_path, "## Pass 1")
+    journal = output / "JOURNAL.md"
+    completed = journal.read_text()
+    empty = blank_heading + "\n\n"
+    journal.write_text(empty + completed if position == "before" else completed + empty)
+    gate = verifier.gate_g11_journal(output, starter)
+    assert gate.score == 10
+    assert "fidelity = 1/1" in gate.detail
+
+
+@pytest.mark.parametrize("last_value,expected_score", [("45", 10), ("46", 0)])
+def test_substantive_replacement_is_still_checked_against_snapshot(tmp_path, last_value, expected_score):
+    output, starter = make_gate_fixture(tmp_path, "## Pass 1")
+    journal = output / "JOURNAL.md"
+    journal.write_text(journal.read_text() + f"\n## Pass 1\nPARAM_0: 70 -> {last_value}\n\n## Pass 1\n")
+    assert verifier.gate_g11_journal(output, starter).score == expected_score
+
+
+def test_empty_heading_does_not_borrow_another_pass(tmp_path):
+    output, starter = make_gate_fixture(tmp_path, "## Pass 2")
+    journal = output / "JOURNAL.md"
+    journal.write_text(journal.read_text() + "\n## Pass 1\n\n")
+    assert verifier.gate_g11_journal(output, starter).score == 0
 
 
 def test_unchanged_real_journal_and_run():

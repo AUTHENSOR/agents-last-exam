@@ -143,31 +143,18 @@ Inputs (all under `{self.input_dir}`; treat as read-only):
   yourself with `uv sync --frozen --project {self.runtime_env_dir}` and
   then run the resulting `.venv/bin/python`.
 
-Recommended workflow:
-1. Load the starfish Experiment and sanity-check the image and codebook.
-2. Preprocess: high-pass filter or background-subtract, normalize intensity
-   by dividing each tile by its provided `scale_factor`, and confirm the pre-registered tiles
-   are still aligned.
-3. Extract full 16-component intensity traces, retaining both channels in
-   every round, using spot detection or pixel-based decoding.
-4. Decode against the full binary codewords, for example with starfish
-   `DetectPixels.PixelSpotDecoder` (normalized Euclidean distance), or a
-   full 16-bit Hamming decoder accepting at most one bit error. Filter by
-   magnitude and distance and resolve ambiguous/overlapping detections.
-   Do not use native 8-round `CheckAll`: its channel-argmax representation
-   collapses distinct codewords when a round has zero or two active channels.
-5. Run Cellpose on the DAPI image with a pretrained nuclei model and a
-   diameter estimated from this image in pixels, not from the cell type
-   alone. Cellpose 3.1.1 `models.Cellpose(model_type='nuclei').eval` with
-   `diameter=None, channels=[0, 0]` estimates the diameter; inspect the
-   resulting masks against the DAPI image.
-6. Assign each decoded transcript to the nucleus whose mask contains its
-   nearest integer pixel; mark transcripts outside every nucleus as
-   extracellular and exclude them from the
-   nucleus-by-gene matrix. The input contains a DAPI nuclear stain but no
-   whole-cell boundary channel, so this is intentionally a nuclear assignment.
-7. Build the nucleus-by-gene count matrix for the 130 real genes (exclude
-   blanks) and compute the quality metrics listed in `output_contract.json`.
+Analysis requirements:
+- Use the full 16-component MHD4 codewords with 1-bit error correction.
+- The provided scale factors are intensity divisors for their round/channel tiles.
+- Use starfish for image analysis and Cellpose for DAPI nuclear segmentation.
+- Assign each decoded transcript to the nucleus whose mask contains its nearest
+  integer pixel. Round x and y independently, with exact half-pixel ties going
+  to the even integer (for example, 2.5 becomes 2 and 3.5 becomes 4). Use zero-based
+  mask indexing [rounded y, rounded x]. A rounded pixel outside the FOV or outside
+  every nucleus is extracellular and excluded from the nucleus-by-gene matrix.
+  Keep the original decoded coordinates in the CSV.
+- The DAPI image defines nuclear boundaries. Build the nucleus-by-gene matrix
+  for the 130 real genes, excluding blanks, and report the required quality metrics.
 
 Outputs must go into `{self.remote_output_dir}`:
 - `decoded_transcripts.csv` with columns `gene, x, y, is_exact, total_magnitude`.

@@ -20,7 +20,8 @@ def test_linux_native_contract():
     task = main.load()[0]
     assert task.computer["setup_config"]["os_type"] == "linux"
     assert task.metadata["output_blend"].endswith("/model.blend")
-    assert "1 mm" in task.description
+    assert "same\n   evaluated geometry" in task.description
+    assert "1 mm" not in task.description
     assert "CPU" in task.description
     assert "Rhino" not in task.description
     assert task.metadata["reference_renders_dir"].endswith("/reference_renders_linux")
@@ -159,7 +160,8 @@ def judge_env(monkeypatch):
         "OPENAI_API_BASE",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(judge, "dotenv_values", lambda path: {"OPENAI_API_KEY": "fixture-key"})
+    monkeypatch.setenv("JUDGE_API_KEY", "fixture-key")
+    monkeypatch.setenv("JUDGE_MODEL", "shared-test-judge")
 
 
 @pytest.fixture
@@ -220,7 +222,9 @@ def install_judge_client(monkeypatch, replies):
                 ],
             )
 
-    monkeypatch.setattr(judge, "OpenAI", Client)
+    from tasks.utils import evaluation
+
+    monkeypatch.setattr(evaluation, "OpenAI", Client)
     return calls, settings
 
 
@@ -252,7 +256,7 @@ def test_each_original_criterion_gets_only_relevant_paired_views(
     assert settings[0]["base_url"] == "https://api.openai.com/v1"
     assert "fixture-key" not in path.read_text()
     for request, result, views in zip(calls, report["per_question"], expected, strict=True):
-        assert request["model"] == "gpt-6-astra"
+        assert request["model"] == "shared-test-judge"
         assert "max_tokens" not in request
         assert request["max_completion_tokens"] >= 2048
         content = request["messages"][0]["content"]
@@ -366,45 +370,27 @@ def test_checkpoint_survives_a_later_api_failure(monkeypatch, render_fixture, ju
     assert any(snapshot["yes_count"] == 1 for snapshot in snapshots[:-1])
 
 
-def test_judge_configuration_uses_working_secret_file_without_global_mutation(
-    monkeypatch, judge_env
-):
-    paths = []
-
-    def secret_values(path):
-        paths.append(path)
-        return {"OPENAI_API_KEY": "secret-fixture", "OPENAI_API_BASE": "https://secret.test/v1"}
-
-    monkeypatch.setattr(judge, "dotenv_values", secret_values)
-    assert judge._judge_settings() == {
-        "model": "gpt-6-astra",
-        "api_key": "secret-fixture",
-        "base_url": "https://secret.test/v1",
-    }
-    assert paths[0] == main.SCRIPTS_DIR.resolve().parents[3] / "secret" / ".env"
-    monkeypatch.setenv("LLM_JUDGE_MODEL", "shared-model")
-    monkeypatch.setenv("OPENAI_API_KEY", "environment-fixture")
-    monkeypatch.setenv("OPENAI_BASE_URL", "https://environment.test/v1")
-    assert judge._judge_settings() == {
-        "model": "shared-model",
-        "api_key": "environment-fixture",
-        "base_url": "https://environment.test/v1",
-    }
-    monkeypatch.setenv("D2T3B_JUDGE_MODEL", "task-model")
-    monkeypatch.setenv("D2T3B_JUDGE_API_KEY", "task-fixture")
-    monkeypatch.setenv("D2T3B_JUDGE_BASE_URL", "https://task.test/v1")
-    assert judge._judge_settings() == {
-        "model": "task-model",
-        "api_key": "task-fixture",
-        "base_url": "https://task.test/v1",
-    }
-    assert judge._judge_settings("explicit-model")["model"] == "explicit-model"
+def test_judge_configuration_uses_private_file_without_global_mutation(monkeypatch, judge_env, tmp_path):
+    import os
+    directory = tmp_path / "eval_time"
+    directory.mkdir()
+    (directory / "openai.env").write_text(
+        "JUDGE_API_KEY=secret-fixture\nJUDGE_BASE_URL=https://secret.test/v1\nJUDGE_MODEL=shared-model\n"
+    )
+    monkeypatch.setenv("AGENTHLE_EVAL_CREDENTIALS_DIR", str(directory))
+    monkeypatch.setenv("OPENAI_API_KEY", "solver-fixture")
+    before = dict(os.environ)
+    settings = judge.judge_config()
+    assert settings["model"] == "shared-model"
+    assert settings["api_key"] == "secret-fixture"
+    assert settings["base_url"] == "https://secret.test/v1"
+    assert dict(os.environ) == before
 
 
-def test_judge_requires_credentials(monkeypatch, judge_env):
-    monkeypatch.setattr(judge, "dotenv_values", lambda path: {})
-    with pytest.raises(RuntimeError, match="requires .*API_KEY"):
-        judge._judge_settings()
+def test_judge_requires_credentials(monkeypatch, judge_env, render_fixture):
+    monkeypatch.delenv("JUDGE_API_KEY")
+    with pytest.raises(RuntimeError, match="JUDGE_API_KEY"):
+        judge.evaluate_renders(*render_fixture)
 
 
 @pytest.mark.asyncio

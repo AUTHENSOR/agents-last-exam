@@ -438,12 +438,48 @@ def gate_mean_coverage(qc: dict) -> GateResult:
                       cfg["weight"], f"{cov:.1f}x in [{cfg['lo']}, {cfg['hi']}]")
 
 
-def gate_dup_rate(qc: dict) -> GateResult:
+def gate_dup_rate(qc: dict, sub: Path) -> GateResult:
     cfg = GATES["dup_rate"]
     dup = float(qc.get("dup_rate", 1.0))
-    ok = dup <= cfg["max"]
+    metrics = sub / "results/reports/multiqc_data/multiqc_picard_dups.txt"
+    count_columns = (
+        "UNPAIRED_READS_EXAMINED", "READ_PAIRS_EXAMINED",
+        "UNPAIRED_READ_DUPLICATES", "READ_PAIR_DUPLICATES",
+    )
+    try:
+        header, *rows = _read_qc_tsv(metrics)
+        required = ("Sample", *count_columns)
+        if any(header.count(column) != 1 for column in required):
+            raise ValueError("missing or duplicate raw count columns")
+        sample_column = header.index("Sample")
+        count_indices = [header.index(column) for column in count_columns]
+        examined = 0
+        duplicates = 0
+        for row in rows:
+            if row[sample_column] != "HG002":
+                continue
+            counts = [float(row[index]) for index in count_indices]
+            if any(not math.isfinite(count) or count < 0 or not count.is_integer()
+                   for count in counts):
+                raise ValueError("HG002 counts must be finite nonnegative integers")
+            unpaired, pairs, unpaired_duplicates, pair_duplicates = map(int, counts)
+            if unpaired_duplicates > unpaired or pair_duplicates > pairs:
+                raise ValueError("HG002 duplicates exceed examined counts")
+            examined += unpaired + 2 * pairs
+            duplicates += unpaired_duplicates + 2 * pair_duplicates
+        if examined == 0:
+            raise ValueError("missing HG002 counts or no examined reads")
+    except (OSError, ValueError, csv.Error) as exc:
+        return GateResult("dup_rate", False, 0, cfg["weight"],
+                          f"cannot verify raw duplicate counts: {exc}")
+    recomputed = duplicates / examined
+    consistent = math.isclose(dup, recomputed, rel_tol=0, abs_tol=5e-7)
+    ok = consistent and recomputed <= cfg["max"]
     return GateResult("dup_rate", ok, cfg["weight"] if ok else 0,
-                      cfg["weight"], f"{dup*100:.2f}% <= {cfg['max']*100:.1f}%")
+                      cfg["weight"],
+                      f"reported={dup:.9g}; raw HG002 duplicates/examined="
+                      f"{duplicates}/{examined}={recomputed:.9g}; consistent={consistent}; "
+                      f"recomputed <= {cfg['max']}: {recomputed <= cfg['max']}")
 
 
 # ----------------------------------------------------------------------------
@@ -895,7 +931,7 @@ def evaluate(sub: Path, hidden_truth_dir: Path) -> Report:
         gate_indel_f1(recomputed),
         gate_snp_ti_tv(recomputed),
         gate_mean_coverage(qc),
-        gate_dup_rate(qc),
+        gate_dup_rate(qc, sub),
         gate_samplesheet_valid(sub),
         gate_known_sites_chr22_only(sub),
         gate_vep_annotation_coverage(sub, hidden_truth_dir),

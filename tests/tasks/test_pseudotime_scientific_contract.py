@@ -86,11 +86,7 @@ def test_estimator_preserves_original_workload_and_scientific_parameters():
     }
     assert "effective p=1" in differential["failed_tests"]
     assert "no separate absolute logFC or fcMedian filter" in differential["selection"]
-    assert contract["scoring"] == {
-        "precision_threshold": 0.80,
-        "recall_threshold": 0.80,
-        "combine": "both required; compare unrounded",
-    }
+    assert "scoring" not in contract
 
 
 def test_public_contract_exposes_reproducibility_and_does_not_ship_reference_code():

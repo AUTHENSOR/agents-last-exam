@@ -33,10 +33,15 @@ def score_request(request_path):
                 "--config",
                 str(config_path),
             ],
-            timeout=3700,
+            timeout=6400,
             check=False,
         )
         replay = json.loads((preview / "replay/result.json").read_text())
+        if replay["status"] == "unavailable":
+            result["replay_result"] = str(preview / "replay/result.json")
+            result["safety_failure"] = replay.get("safety", {}).get("failure")
+            result["safety_receipt"] = replay.get("safety_receipt")
+            raise RuntimeError(replay.get("error") or "Native safety replay unavailable")
         expected_code = 2 if replay["status"] == "invalid_delivery" else 0
         if process.returncode != expected_code:
             raise RuntimeError(f"Native preview failed with exit {process.returncode}")

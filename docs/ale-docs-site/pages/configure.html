@@ -20,31 +20,46 @@
 
     <h2 id="v1-1">Use the v1.1 release</h2>
     <p>
-      ALE v1.1 updates <strong>62 tasks</strong> and retires one, leaving
-      <strong>151 tasks</strong>. Six formerly
+      ALE v1.1 selects <strong>150 tasks</strong> after two retirements.
+      The upgrade scope marks <strong>71 active tasks</strong> for rerun and
+      79 for retention. Six formerly
       licensed tasks keep their IDs and business goals using open-source Linux
       workflows: Blender building reconstruction, FreeCAD Road alignment,
       FreeCAD CAM with LinuxCNC and CAMotics, Kratos support analysis, MuseScore
       transcription, and Ardour project migration. <code>engineering/mold-flow</code>
       is removed because its full fill/pack/cool/demold workflow has no validated
       open-source replacement at the original scope.
+      <code>education_info/homework_grading_numerical_pdes_instance_02</code>
+      is retired because feedback verification was overly tied to fixed wording.
+    </p>
+    <p>
+      The standalone task-data release covers the 150 active tasks. VM images
+      retain an inactive PDE data payload, but the retired task has no source
+      implementation or selection-list entry and does not count toward coverage.
     </p>
     <table>
       <thead><tr><th>Change</th><th>Tasks</th><th>What counts</th></tr></thead>
       <tbody>
-        <tr><td>Instruction</td><td>54</td><td>Agent-facing prompts and instructions, including input documents</td></tr>
-        <tr><td>Verification</td><td>48</td><td>Scoring logic, acceptance rules and grader execution</td></tr>
-        <tr><td>Environment</td><td>32</td><td>Task-specific software, dependencies, setup, staging, paths, resources or platform</td></tr>
+        <tr><td>Instruction</td><td>58</td><td>Agent-facing prompts and instructions, including input documents</td></tr>
+        <tr><td>Verification</td><td>56</td><td>Scoring logic, acceptance rules and grader execution</td></tr>
+        <tr><td>Environment</td><td>37</td><td>Task-specific software, dependencies, setup, staging, paths, resources or platform</td></tr>
         <tr><td>Data</td><td>30</td><td>Input materials, starter/helper assets, models, media or reference answers</td></tr>
       </tbody>
     </table>
     <p>
-      Categories overlap; the six conversions are included in the 62 updated
+      Categories overlap; the six conversions are included in the 71 updated
       tasks. Classify by content, not storage location: a prompt edit in a data
-      archive counts as Instruction. These counts exclude the retired task,
+      archive counts as Instruction. These counts exclude the retired tasks,
       unselected variants, inactive metadata, packaging-only cleanup and shared
       framework changes. See the
       <a href="https://github.com/rdi-berkeley/agents-last-exam/blob/main/releases/v1.1/upgrade.json">per-task category map</a>.
+    </p>
+    <p>
+      Task designs and source are frozen. Use the matching image and data pins
+      in the asset manifest below. The
+      <a href="https://github.com/rdi-berkeley/agents-last-exam/blob/main/docs/releases/v1.1-task-review.md">task review</a>
+      records validation scope and limits; it does not certify complete agent
+      validation of the release.
     </p>
     <p>
       Changes preserve the original business goal and intended difficulty, align
@@ -63,9 +78,10 @@
       </tbody>
     </table>
     <p>
-      All six use the Linux VM image with QEMU or Google Cloud. The three Docker
-      additions passed native save/reopen, export and task artifact checks;
-      these checks establish runtime compatibility, not agent task scores.
+      All six use the Linux VM image with QEMU or Google Cloud. The default
+      Docker profile supports the three workflows listed above. Runtime
+      compatibility checks cover native save/reopen, export and task artifacts;
+      see the task review for their scope and limits.
       The default Docker profile lacks the process/network isolation used by
       G-code, the systemd supervisor used by Road, and the supervisor plus
       writable delegated cgroups used by excavation support. These three require
@@ -173,10 +189,10 @@ cleanup_mode: delete</code></pre>
       <thead><tr><th>List</th><th>Units before agent multiplication</th><th>Purpose</th></tr></thead>
       <tbody>
         <tr><td><code>hello_both.txt</code></td><td>2</td><td>Ubuntu and Windows smoke test</td></tr>
-        <tr><td><code>docker_support.txt</code></td><td>102</td><td>Supported local-container subset</td></tr>
-        <tr><td><code>ale_cli.txt</code></td><td>111</td><td>All selected <code>cpu-free-ubuntu</code> tasks, including desktop workflows</td></tr>
-        <tr><td><code>cpu.txt</code></td><td>146</td><td>Ubuntu and Windows CPU tasks</td></tr>
-        <tr><td><code>full.txt</code></td><td>151</td><td>The complete v1.1 benchmark</td></tr>
+        <tr><td><code>docker_support.txt</code></td><td>101</td><td>Supported local-container subset</td></tr>
+        <tr><td><code>ale_cli.txt</code></td><td>110</td><td>All selected <code>cpu-free-ubuntu</code> tasks, including desktop workflows</td></tr>
+        <tr><td><code>cpu.txt</code></td><td>145</td><td>Ubuntu and Windows CPU tasks</td></tr>
+        <tr><td><code>full.txt</code></td><td>150</td><td>The complete v1.1 benchmark</td></tr>
       </tbody>
     </table>
     <p>
@@ -229,8 +245,27 @@ GCP_SA_KEY=secret/gcp_key.json</code></pre>
       <code>secret/.env</code> with <code>cp -n</code>, then fill in the API and
       provider credentials needed by your run. GCP variables are required only by the Google Cloud
       profile. Local profiles still need whichever API key their agent preset
-      uses. Judge-based tasks can also require evaluator keys under
-      <code>secret/eval_time/</code>.
+      uses.
+    </p>
+    <p>
+      For text/image judges, copy <code>secret/eval_time/openai.env.example</code>
+      to <code>secret/eval_time/openai.env</code> and set <code>JUDGE_BASE_URL</code>,
+      <code>JUDGE_API_KEY</code>, and <code>JUDGE_MODEL</code>. These settings are
+      read privately at evaluation time, independently of solver credentials.
+      Do not source evaluator files or add them to agent presets. Optional
+      <code>JUDGE_REASONING_EFFORT</code> and <code>JUDGE_MAX_COMPLETION_TOKENS</code>
+      configure reasoning and a minimum token budget for text/image calls. Music
+      project migration uses deterministic audio comparison and requires no
+      audio-model endpoint. Its overview screenshot still uses the shared image
+      judge. Gemini video judges retain their
+      Gemini configuration. The hello-world task needs no judge.
+    </p>
+    <p>
+      Before provisioning sandboxes, batches containing shared LLM-judge tasks
+      probe the configured judge with text and, when required, an image. A failed
+      probe aborts the batch; fix the judge configuration and rerun the command.
+      <code>--dry-run</code> makes no judge requests. A later judge outage is an
+      evaluation failure requiring retry, not a valid score.
     </p>
 
     <h2>Configure task data and output</h2>

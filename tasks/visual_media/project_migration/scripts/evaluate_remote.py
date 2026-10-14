@@ -1,6 +1,7 @@
 """Produce evaluator-owned native and complete-delivery evidence on Linux."""
 
 import argparse
+import asyncio
 from collections import Counter
 import json
 import os
@@ -175,7 +176,7 @@ def evaluate_local(output, baseline, references, evidence, *, native=True):
         and result.get("native", {}).get("passed")
         and result["native"]["state"]["passed"]
     )
-    result["native_check_executed"] = native
+    result["native_check_executed"] = "native" in result
     if result["gate_passed"]:
         render_native_stems(Path(result["native"]["snapshot"]), delivery, evidence / "native-audio")
     return result
@@ -187,7 +188,12 @@ if __name__ == "__main__":
         parser.add_argument("--" + name, required=True, type=Path)
     args = parser.parse_args()
     try:
+        from audio_score import score_delivery
+
         report = evaluate_local(args.output, args.baseline, args.references, args.evidence)
+        if report["gate_passed"]:
+            scored = asyncio.run(score_delivery(report["delivery"], args.evidence))
+            (args.evidence / "scored.json").write_text(json.dumps(scored, indent=2) + "\n")
     except Exception as exc:
         report = {"infrastructure_error": f"{type(exc).__name__}: {exc}"}
     args.evidence.mkdir(parents=True, exist_ok=True)

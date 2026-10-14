@@ -289,14 +289,14 @@ def test_public_contract_alignment():
     runtime = main.MerfishTaskConfig().task_description
     card = json.loads(Path(main.__file__).with_name("task_card.json").read_text())
     assert (
-        runtime.split("5. Run Cellpose")[1].split("6. Assign")[0]
-        == card["taskPrompt"].split("5. Run Cellpose")[1].split("6. Assign")[0]
+        runtime.split("Analysis requirements:")[1].split("Outputs must go")[0]
+        == card["taskPrompt"].split("Analysis requirements:")[1].split("Outputs must go")[0]
     )
     assert (
         runtime.split("Total-count plausibility")[1]
         == card["taskPrompt"].split("Total-count plausibility")[1]
     )
-    assert "diameter=None, channels=[0, 0]" in runtime
+    assert "diameter=None, channels=[0, 0]" not in runtime
     assert "historical `cell` names" in runtime
     assert "nuclear transcript counts" in runtime
     assert "reference_real" in card["evaluation"]
@@ -467,6 +467,44 @@ def test_matrix_uses_existing_rounding_and_xy_order(case):
     assert result.components["matrix_consistency"].score == 0.1
 
 
+def test_half_pixel_ties_on_both_axes_use_even_pixels(case):
+    arguments = payloads(case)
+    mask = np.zeros(scorer.SEGMENTATION_SHAPE, dtype=np.uint16)
+    mask[100, 100] = 1
+    mask[101, 101] = 2
+    mask[100, 102] = 3
+    mask[102, 100] = 4
+    decoded = pd.DataFrame({
+        "gene": ["Gene-A", "Gene-B", "Gene-C", "Gene-A", "Gene-A", "Blank-1"],
+        "x": [100.5, 101.5, 100.5, 100.49, 2047.5, 100.5],
+        "y": [100.5, 100.5, 101.5, 100.49, 100, 100.5],
+        "is_exact": [True] * 6,
+        "total_magnitude": [0.002] * 6,
+    })
+    matrix = "cell_id,Gene-A,Gene-B,Gene-C\n1,2,0,0\n2,0,0,0\n3,0,1,0\n4,0,0,1\n"
+    arguments.update(
+        decoded_csv_bytes=decoded.to_csv(index=False).encode(),
+        segmentation_tiff_bytes=encode_tiff(mask),
+        cell_by_gene_csv_bytes=matrix.encode(),
+        quality_metrics_json_bytes=json.dumps({
+            "total_decoded_transcripts": 6, "blank_rate": 1 / 6,
+            "exact_match_fraction": 1, "n_cells": 4, "assigned_fraction": 0.8,
+            "mean_transcripts_per_cell": 1,
+        }).encode(),
+    )
+    result = scorer.score(**arguments)
+    assert not result.hard_failed
+    assert result.structural["assigned_fraction"] == 0.8
+    assert result.components["matrix_consistency"].score == 0.1
+    arguments["cell_by_gene_csv_bytes"] = (
+        "cell_id,Gene-A,Gene-B,Gene-C\n1,1,0,0\n2,1,0,0\n3,0,0,0\n4,0,0,0\n"
+    ).encode()
+    half_up = scorer.score(**arguments)
+    assert half_up.components["matrix_consistency"].score == 0
+    for name in result.components.keys() - {"matrix_consistency"}:
+        assert half_up.components[name].score == result.components[name].score
+
+
 @pytest.mark.parametrize("axis", ["x", "y"])
 def test_reference_region_has_explicit_inclusive_boundaries(axis):
     frame = pd.DataFrame({"x": [100.0] * 6, "y": [100.0] * 6})
@@ -532,11 +570,15 @@ def test_public_workflow_preserves_the_binary_codebook():
     description = main.MerfishTaskConfig().task_description
     card = json.loads(Path(main.__file__).with_name("task_card.json").read_text())
     for prompt in (description, card["taskPrompt"]):
-        assert "full 16-component intensity traces" in prompt
-        assert "DetectPixels.PixelSpotDecoder" in prompt
-        assert "full 16-bit Hamming decoder accepting at most one bit error" in prompt
-        assert "Do not use native 8-round `CheckAll`" in prompt
-        assert "dividing each tile" in prompt
+        assert "full 16-component MHD4 codewords with 1-bit error correction" in prompt
+        assert "DetectPixels.PixelSpotDecoder" not in prompt
+        assert "Do not use native 8-round `CheckAll`" not in prompt
+        assert "scale factors are intensity divisors" in prompt
         assert "40 <= x <= 2008" in prompt and "40 <= y <= 2008" in prompt
         assert "do not crop the mask or translate coordinates" in prompt
+        assert "Round x and y independently" in prompt
+        assert "to the even integer" in prompt
+        assert "2.5 becomes 2 and 3.5 becomes 4" in prompt
+        assert "[rounded y, rounded x]" in prompt
+        assert "Keep the original decoded coordinates in the CSV" in prompt
     assert "MHD4-aware `CheckAll`" not in " ".join(card["agentMustDo"])

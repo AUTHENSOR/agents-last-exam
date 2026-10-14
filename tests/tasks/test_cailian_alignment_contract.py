@@ -33,8 +33,8 @@ def test_runtime_prompt_and_card_disclose_unchanged_ratio():
     for prompt in (main.config.task_description, card["taskPrompt"]):
         assert "straight-line distance between the specified control points" in prompt
         assert f"at least {main.MIN_PATH_OVER_CHORD}" in prompt
-        assert f"{main.CHORD_LENGTH:.6f} m" in prompt
-        assert f"{main.MIN_PATH_OVER_CHORD * main.CHORD_LENGTH:.6f} m" in prompt
+        assert f"{main.CHORD_LENGTH:.6f} m" not in prompt
+        assert f"{main.MIN_PATH_OVER_CHORD * main.CHORD_LENGTH:.6f} m" not in prompt
     assert main.MIN_PATH_OVER_CHORD == 1.05
     assert (main.MIN_TOTAL_LENGTH, main.MAX_TOTAL_LENGTH) == (1800.0, 2400.0)
 

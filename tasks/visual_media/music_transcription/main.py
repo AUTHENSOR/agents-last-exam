@@ -542,70 +542,23 @@ Output files (all saved to {self.remote_output_dir}):
 - transcription.mscz or transcription.mscx, or {TRANSCRIPTION_NOTATION}: The same complete editable score.
 - {OVERVIEW_SCREENSHOT}: Screenshot of the notation software showing the transcribed score with instrument staves visible.
 
-Evaluation weights are pitch 30%, rhythm 30%, dynamics 20%, instrument assignment
-10%, and score layout 10%. Missing parts lose credit. Track order and names,
-equivalent MIDI encodings, correctly
-transposed notation, and alternative readable page layouts are unrestricted.
+Track order and names, equivalent MIDI encodings, correctly transposed notation,
+and alternative readable page layouts are unrestricted.
 GM program numbers in the brief are zero-based; follow the explicit numbers.
-Pitch and rhythm use one-to-one matching of sounding pitches and performed
-onsets from your MusicXML, with a 40-millisecond tolerance. Extra and missing
-notes reduce F1. Rhythm checks written duration, duration articulations, arpeggios,
-trills, pedal spans, glissando endpoints and legato phrasing.
-Instrument credit includes audible playing techniques such
-as harmonics, muting and pizzicato, with equivalent standard words or symbols.
-Written rhythm is checked
-rather than the synthesizer's note-release length. Measured tremolos and their
-explicit repeated notes are equivalent. Dynamics compares relative written
-loudness and crescendo/diminuendo profiles (80%) and force articulations (20%).
-For a part without written dynamic markings in the source score, the loudness
-profile is assessed from matched MIDI note velocities and volume/expression
-controls against the recording's reference performance. Ornament attacks are
-grouped by their written note, allowing equivalent complete roll rates and
-grace timing without changing the required loudness pattern. Overall volume scaling
-is accepted; missing, flat or reversed expression loses credit. Missing or extra
-performed notes reduce this comparison's coverage.
-The four musical categories are averaged over the brief's logical instruments;
-splitting an instrument across staves or files' MIDI tracks changes no weight.
-MIDI coverage and precision against your own score scale the musical scores by
-their harmonic mean. Wrong MIDI programs also reduce instrument credit.
-For notated arpeggios, MIDI must play every chord pitch in the marked order,
-with its first or last attack within 40 ms of the written onset.
-Grace notes must be played in their written order, with a separate attack for
-each repeated grace pitch. They may precede or delay the principal note: the
-first grace or principal attack must align within 40 ms of its written onset.
-Grace groups and arpeggios stay within their local score passage, bounded by
-the preceding onset and the principal/chord ending or next onset in the
-participating voices. Their timing has no universal duration fraction or
-seconds cap. Ordinary notes retain the same 40 ms accuracy requirement.
-Trills must alternate between the written note and its indicated neighbor,
-either using a trill mark or writing out the complete alternating notes,
-spanning the written duration. Either pitch may start the trill within 40 ms
-of its onset. Playback gaps and the final attack are checked against that
-passage in the reference performance, with the same 40 ms tolerance, rather
-than a universal trill speed. A held note is not a performed trill.
-Glissandi must play intervening pitches in the marked direction, not just their
-endpoints. Complete written-out trills and monotonic glissando runs are
-equivalent to their marks when their endpoints match the source span and
-their written notes connect within 40 ms. Tremolo playback preserves repeated
-pitches and alternating phases. Timing follows local tempo and the written
-subdivisions, using the reference passage's cadence and complete span when
-repeated source attacks are available. Complete alternative roll rates are
-accepted; skipped attacks and incomplete spans lose credit.
-Piano pedal markings apply across the instrument's staves. MIDI sustain
-controllers or equivalent extended note releases must preserve those sustained
-regions; pedal transitions use the same 40 ms tolerance.
-The complete PDF must contain the same score as the MusicXML; different page
-layouts and valid condensed staves are accepted. The screenshot must show a
-notation editor with the score visible. Missing, invalid or inconsistent
-required documents receive zero. A correct but incomplete transcription can
-receive partial musical credit if its submitted exports agree.
-Layout receives full credit for readable professional notation with correct
-identification and no material collisions or clipping, half credit for usable
-notation with specific readability defects, and zero if unusable or unidentified.
-Cover pages, sparse orchestration and alternative spacing are not defects.
-For D.C., D.S., coda and fine, submit your native MuseScore score. The evaluator
-expands playback navigation; you do not need to rewrite repeated passages.
-Ordinary repeats, numbered endings and transposed instruments are supported.
+Preserve the complete pitches, written rhythms, ornaments, playing techniques,
+articulations, pedal spans and relative dynamics of every part in both notation
+and playback. Equivalent standard words or symbols and complete written-out
+ornaments are accepted, including alternative complete roll rates and grace
+timing that preserve the local musical passage. Overall volume scaling is allowed.
+For passages without written dynamic markings, retain their expressive loudness
+in MIDI playback. Sustain controllers or equivalent extended note releases may
+represent pedal regions. Instruments may span multiple staves or MIDI tracks.
+Use readable professional notation with the correct title and composer and no
+material collisions or clipping. Cover pages, valid condensed staves and
+alternative spacing are accepted.
+For D.C., D.S., coda and fine, submit your native MuseScore score with playback
+navigation intact. Ordinary repeats, numbered endings and transposed instruments
+are supported.
 
 """
 

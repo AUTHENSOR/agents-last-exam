@@ -9,13 +9,13 @@ from xml.etree import ElementTree
 from zipfile import BadZipFile
 
 import fitz
-from openai import AsyncOpenAI
 from PIL import Image, ImageDraw, ImageFont
 
-from tasks.utils.evaluation import EvaluationContext, _resolve_client_kwargs, build_vision_content, resolve_llm_judge_model
+from tasks.utils.evaluation import EvaluationContext, build_vision_content, llm_multimodal_json
 
 from .notation import dynamic_values, group_reference_parts, parse_musicxml
 from .native_export import export_native_score
+from .document_coverage import sounding_part_inventory, validate_part_coverage
 from .notation_scoring import compare_notation, normalize_ornaments
 from .performance_dynamics import compare_performance_dynamics
 from .playback import compare_playback, reference_tremolo_timing, reference_trill_timing
@@ -51,20 +51,12 @@ async def judge_documents(*, prompt, image_bytes_list, max_tokens=16384):
     for item in content:
         if item.get("type") == "image_url":
             item["image_url"]["detail"] = "high"
-    async with AsyncOpenAI(**_resolve_client_kwargs()) as client:
-        response = await client.chat.completions.create(
-            model=resolve_llm_judge_model(env_var="MUSIC_TRANSCRIPTION_JUDGE_MODEL"),
-            messages=[{"role": "user", "content": content}],
-            reasoning_effort="high",
-            max_completion_tokens=max_tokens,
-            response_format={"type": "json_object"},
-        )
-    if not response.choices or response.choices[0].finish_reason != "stop":
-        raise RuntimeError("Incomplete music document review")
-    result = json.loads(response.choices[0].message.content)
-    if not isinstance(result, dict):
-        raise RuntimeError("Music document review must return an object")
-    return result
+    return await llm_multimodal_json(
+        content=content,
+        max_tokens=max_tokens,
+        temperature=None,
+        reasoning_effort="high",
+    )
 
 
 async def render_score(session, score_path, output_dir):
@@ -112,7 +104,8 @@ async def render_score(session, score_path, output_dir):
     raise RuntimeError(f"MusicXML renderer did not report completion: {location}")
 
 
-async def review_documents(pdf_content, rendered_content, screenshot, brief):
+async def review_documents(pdf_content, rendered_content, screenshot, brief, notation_content):
+    inventory = sounding_part_inventory(notation_content)
     submitted = pdf_pages(pdf_content, "SUBMITTED PDF")
     rendered = pdf_pages(rendered_content, "INDEPENDENT SCORE RENDER")
     ending_details = []
@@ -139,6 +132,16 @@ async def review_documents(pdf_content, rendered_content, screenshot, brief):
             "Check the entire PDF against the independently rendered score: musical material, instruments, "
             "section order, beginning and ending, without missing or repeated blocks. Different pagination, "
             "staff grouping, concert/transposed display, condensed staves and omission of resting staves are valid. "
+            "Both PDFs can share the same clipping defect. Agreement between them is insufficient to establish completeness. "
+            "The following inventory comes from the candidate's actual notation source. It lists EVERY sounding part, "
+            "its sounding measures and written notes in its first and last sounding measures. "
+            "For EACH part, locate its first and last sounding material in the SUBMITTED PDF and verify its intervening "
+            "sounding measures are represented. Inspect lower orchestral staves individually; a page ending with brass "
+            "does not represent strings, harp, keyboards or percussion still sounding below it. "
+            "A final barline on an upper staff is not evidence that lower parts survived export. "
+            "Resting staves may be hidden. Condensed staves may represent multiple parts only when their sounding "
+            "material is actually visible; identify the shared staff and the relevant voices. "
+            f"Candidate sounding-part inventory: {json.dumps(inventory)}. "
             "Do not demand pixel matching or the same page count. A cover or a few correct pages do not "
             "substitute for the whole score. Check the screenshot actually shows a notation editor with musical staves. "
             "Playback-only intermediate tempo values may be printed by the independent renderer even when "
@@ -152,7 +155,12 @@ async def review_documents(pdf_content, rendered_content, screenshot, brief):
             "unusable or unidentified score. Do not deduct merely for a cover page, sparse orchestration, "
             "wide spacing, extra pages or a different stylistic preference. "
             "Return JSON with booleans notation_ui, same_score, complete_pdf; layout_score from 0 to 1; "
-            "and a concise reason identifying any actual inconsistent section/page."
+            "and a concise reason identifying any actual inconsistent section/page. "
+            "Also return part_coverage, one object per inventory part_id with: part_id, complete (boolean), "
+            "first_page and last_page (1-based SUBMITTED PDF page numbers, null if absent), staff (visible label or "
+            "condensed staff identification), evidence (specific musical content of that part's ending and any missing "
+            "measures). Set complete=false for an absent, clipped or unverifiable sounding part. "
+            "complete_pdf must be false if ANY sounding part is incomplete."
     )
     response = await judge_documents(prompt=prompt, image_bytes_list=[screenshot, *submitted, *rendered, *ending_details])
     for key in ("notation_ui", "same_score", "complete_pdf"):
@@ -161,7 +169,8 @@ async def review_documents(pdf_content, rendered_content, screenshot, brief):
     layout = response.get("layout_score")
     if type(layout) not in (int, float) or layout not in (0, .5, 1):
         raise RuntimeError("Document judge did not return a rubric layout score (0, 0.5, 1)")
-    return {**response, "submitted_pages": len(submitted), "rendered_pages": len(rendered)}
+    complete_parts = validate_part_coverage(response, inventory, len(submitted))
+    return {**response, "complete_pdf": response["complete_pdf"] and complete_parts, "submitted_pages": len(submitted), "rendered_pages": len(rendered), "sounding_parts": inventory}
 
 
 async def evaluate_delivery(task_cfg, session, extract_tracks):
@@ -225,7 +234,7 @@ async def evaluate_delivery(task_cfg, session, extract_tracks):
             notation["dynamics"] = sum(entry["dynamics"] for entry in notation["parts"]) / len(notation["parts"]) * notation["extra_note_penalty"]
         if rendered is None:
             rendered = await render_score(session, f"{output}/transcription.musicxml", output)
-        review = await review_documents(files["transcription.pdf"], rendered, files["overview.png"], brief)
+        review = await review_documents(files["transcription.pdf"], rendered, files["overview.png"], brief, files["transcription.musicxml"])
         context.log_evaluation(identifier="document_consistency", score=float(all(review[key] for key in ("notation_ui", "same_score", "complete_pdf"))), review=review)
         if not all(review[key] for key in ("notation_ui", "same_score", "complete_pdf")):
             return [0.0]

@@ -90,19 +90,71 @@ def test_public_numerical_review_split_preserves_original_refinement_and_weights
     instruction = (main.ASSETS / "instruction.md").read_text()
     delivery = (main.ASSETS / "delivery_schema.md").read_text()
     assert "local-refinement requirement remains mandatory" in definition
-    assert "further numerical validation" in definition
-    assert "further numerical validation" in instruction
+    assert "No additional mesh/domain study is required" in definition
+    assert "Additional mesh/domain studies are optional" in instruction
     assert "numerical_validation_followup" not in definition
     assert "numerical_validation_followup" not in instruction
     assert "support-decision" in delivery
-    assert "native_model_contract.py" in instruction
-    assert "50% numerical and 50% engineering delivery" in instruction
-    assert "max(0.30 mm, 5%)" in instruction
-    assert "Observed errors and invalid" in definition
+    assert "native_model_contract.py" not in instruction
+    assert "max(0.30 mm, 5%)" not in instruction + definition + delivery
+    assert "6600-second" in instruction
+    assert "4 GiB memory cap" in instruction
 
 
 def test_original_source_integrity(original_sources):
     verification.verify_source_bundle(original_sources)
+
+
+@pytest.mark.asyncio
+async def test_setup_removes_old_grading_tools_but_keeps_native_model_runtime(
+    original_sources, tmp_path, monkeypatch
+):
+    import shlex
+    import subprocess
+
+    from tasks.engineering.inner_support_elevation_optimization import native_task
+
+    software = tmp_path / "software"
+    scripts = software / "scripts"
+    scripts.mkdir(parents=True)
+    for name in native_task.NATIVE_SCRIPTS:
+        (scripts / name).write_text("old public copy")
+    retained = scripts / "agent_model.py"
+    retained.write_text("agent work")
+
+    class Session:
+        async def read_bytes(self, path):
+            return original_sources[Path(path).name]
+
+    async def upload(session, root, files):
+        for name, contents in files.items():
+            path = Path(root) / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(contents)
+
+    async def command(session, text, **kwargs):
+        arguments = shlex.split(text)
+        if arguments[0] == "python3":
+            subprocess.run(arguments, check=True)
+        return {"return_code": 0}
+
+    monkeypatch.setattr(native_task, "upload_files", upload)
+    monkeypatch.setattr(native_task, "run_command", command)
+    await native_task.setup_native(
+        {
+            "input_dir": str(tmp_path / "input"),
+            "software_dir": str(software),
+            "remote_output_dir": str(tmp_path / "output"),
+        },
+        Session(),
+    )
+    assert {path.name for path in scripts.iterdir()} == {
+        *native_task.PUBLIC_NATIVE_SCRIPTS,
+        "agent_model.py",
+    }
+    assert retained.read_text() == "agent work"
+    assert "class FamilyRunner" in (scripts / "native_family_runner.py").read_text()
+    assert (software / "assets/benchmark.json").is_file()
 
 
 @pytest.mark.parametrize(
@@ -312,8 +364,10 @@ def test_all_monitor_conventions_are_public_and_keep_source_registration_open():
     assert monitoring["report_units"] == "mm"
     for filename in ("instruction.md", "model_definition.md"):
         text = (main.ASSETS / filename).read_text()
-        assert monitoring["settlement_formula"] in text
-        assert monitoring["wall_movement_formula"] in text
+        assert "downward" in text and "horizontal displacement magnitude" in text
+        assert "Stage 1" in text
+    definition = (main.ASSETS / "model_definition.md").read_text()
+    for text in (definition,):
         assert "6.50 m" in text
         assert "rounded legacy study label" in text
 

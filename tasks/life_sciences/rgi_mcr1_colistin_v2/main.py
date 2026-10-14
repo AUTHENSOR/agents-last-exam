@@ -58,6 +58,7 @@ DOMAIN_NAME = "life_sciences"
 TASK_NAME = "rgi_mcr1_colistin_v2"
 TASK_ID = f"{DOMAIN_NAME}/{TASK_NAME}"
 VARIANT_NAME = "base"
+VISIBLE_TASK_NAME = "amr_contig_annotation_instance_1"
 CANONICAL_OUTPUT_DIR_NAMES = {
     "output",
     "output_test_pos",
@@ -85,6 +86,10 @@ class RgiMcr1ColistinV2Config(LinuxTaskConfig):
     DOMAIN_NAME: str = DOMAIN_NAME
     TASK_NAME: str = TASK_NAME
     VARIANT_NAME: str = VARIANT_NAME
+
+    @property
+    def task_dir(self) -> str:
+        return f"{self.REMOTE_ROOT_DIR}/{self.DOMAIN_NAME}/{VISIBLE_TASK_NAME}/{self.VARIANT_NAME}"
 
     @property
     def eval_dir(self) -> str:
@@ -147,9 +152,8 @@ Required workflow:
 1. Work from a writable directory under `{self.remote_output_dir}`.
 2. Create a task-local Python environment from `{self.runtime_env_dir}` so the `rgi` CLI is available.
    Install any open-source command-line dependencies required by RGI, including
-   making `blastn`, `diamond`, and `prodigal` available on `PATH`. On Ubuntu,
-   use a non-interactive package install, for example:
-   `sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ncbi-blast+ diamond-aligner prodigal`.
+   making `blastn`, `diamond`, and `prodigal` available on `PATH`.
+   Ubuntu package names: `ncbi-blast+`, `diamond-aligner`, and `prodigal`.
 3. Use the staged `{self.card_json}` with `rgi load --local -i ../input/card.json`.
 4. Run RGI in contig mode against `../input/input_contig.fasta` with:
    `rgi main -i ../input/input_contig.fasta -o rgi_result -t contig --local --clean -g PYRODIGAL`
@@ -180,6 +184,7 @@ Important constraints:
         metadata.update(
             {
                 "task_id": TASK_ID,
+                "sandbox_task_name": VISIBLE_TASK_NAME,
                 "workspace_dir": self.task_dir,
                 "data_task_dir": self.data_task_dir,
                 "output_dir_name": self.output_dir_name,
@@ -214,6 +219,7 @@ def load():
 @cb.setup_task(split="train")
 async def start(task_cfg, session: cb.DesktopSession):
     await _setup(task_cfg, session)
+    await session.interface.create_dir(task_cfg.metadata["remote_output_dir"])
 
 
 @cb.evaluate_task(split="train")

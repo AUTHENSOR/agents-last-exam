@@ -162,7 +162,7 @@ Complete the whole-feeder model with affine terms for unknown line lengths, with
 - The benchmark runtime should stay isolated from any global package state.
 
 ## Conventions
-- For this task, `N_T` is the number of `PowerTransformer` objects assigned to the current feeder; each counts as one equally weighted load point. Do not use the `EnergyConsumer` count for `N_T`.
+- `N_T` is the number of `PowerTransformer` objects assigned to the current feeder; each counts as one equally weighted load point.
 - Use these exact row fields:
   - `fault_rows`: `section, name, length_km, lambda_i, perm_users, t_iso_h, r_i_h, lambda_N, lambda_N_r`
   - `device_fault_rows`: `type, section, name, device_count, lambda_per_device, affected_users, t_repair_h, lambda_N, lambda_N_r`
@@ -183,8 +183,6 @@ Complete the whole-feeder model with affine terms for unknown line lengths, with
 - Keep the section tables in the JSON output.
 - Do not write any extra files into `{self.remote_output_dir}`.
 
-## Practical Note
-The task is designed for Python-based network analysis and data processing. If you need additional Python packages, install them from the staged manifests under `input/` using `uv`.
 """
 
     def to_metadata(self) -> dict[str, Any]:

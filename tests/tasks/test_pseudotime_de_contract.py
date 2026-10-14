@@ -344,7 +344,7 @@ def test_public_prompt_card_and_raw_brief_agree():
     prompt = task.config.task_description.replace(task.config.task_dir, "base")
     raw = (TASK_DIR / "task_description.txt").read_text()
     assert card["taskPrompt"] == prompt
-    for prefix in ("Format: ", "Scoring: "):
+    for prefix in ("Format: ",):
         paragraph = next(line[2:] for line in prompt.splitlines() if line.startswith("- " + prefix))
         assert paragraph in raw
     for text in (prompt, raw):
@@ -359,6 +359,7 @@ def test_public_prompt_card_and_raw_brief_agree():
         assert "num_waypoints=500" in text
         assert "nknots=6" in text
         assert "l2fc=log2(1.5)" in text
+        assert "BOTH precision >= 0.80 AND recall >= 0.80" not in text
     assert "BOTH precision >= 0.80 AND recall >= 0.80" in card["evaluation"]
     assert card["vm"] == {
         "machineType": "c4-standard-4",

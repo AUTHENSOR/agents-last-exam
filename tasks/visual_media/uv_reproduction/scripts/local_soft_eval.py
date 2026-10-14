@@ -1,34 +1,14 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
-from dotenv import dotenv_values
 from PIL import Image, ImageOps, ImageDraw
 from tasks.utils.evaluation import (
-    eval_credentials_dir,
+    judge_config,
     llm_vision_binary_questions_sync,
     resolve_llm_judge_model,
 )
-
-MODEL = resolve_llm_judge_model(
-    env_var='BLENDER_TASK_SOFT_EVAL_MODEL',
-    default='gpt-4.1-mini',
-)
-
-
-def _load_api_key() -> str | None:
-    evaluator_env = eval_credentials_dir() / "openai.env"
-    if evaluator_env.is_file():
-        value = dotenv_values(evaluator_env).get("OPENAI_API_KEY")
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    if os.environ.get("AGENTHLE_EVAL_CREDENTIALS_DIR"):
-        return None
-    repo_env = Path(__file__).resolve().parents[4] / "secret" / ".env"
-    value = dotenv_values(repo_env).get("OPENAI_API_KEY")
-    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _pair_sheet(reference_path: Path, candidate_path: Path, label: str, out_path: Path) -> Path:
@@ -64,8 +44,8 @@ def _stack(paths: list[Path], out_path: Path) -> Path:
 def run_local_soft_eval(frame_pairs: list[dict], local_tmp_dir: Path) -> float:
     if not frame_pairs:
         return 0.0
-    if not _load_api_key():
-        raise RuntimeError("OPENAI_API_KEY is not set for UV soft evaluation")
+    if not judge_config()["api_key"]:
+        raise RuntimeError("JUDGE_API_KEY is not set for UV soft evaluation")
     local_tmp_dir.mkdir(parents=True, exist_ok=True)
     sheets = []
     for pair in frame_pairs:
@@ -87,9 +67,9 @@ def run_local_soft_eval(frame_pairs: list[dict], local_tmp_dir: Path) -> float:
         prompt_context=prompt_context,
         questions=questions,
         image_bytes_list=[bundle.read_bytes()],
-        model=MODEL,
+        model=resolve_llm_judge_model(),
         temperature=0,
-        api_key=_load_api_key(),
+        api_key=judge_config()["api_key"],
     )
     (local_tmp_dir / 'soft_eval_report.json').write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     return max(0.0, min(1.0, float(data.get('final_score', 0.0))))

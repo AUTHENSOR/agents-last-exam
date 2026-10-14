@@ -20,9 +20,11 @@ Phase mapping (refined from simprun, surface renamed to LOG_SPEC events):
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import logging
 import signal
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -317,6 +319,7 @@ async def run_one_unit(
                 agent_name=agent_name,
                 run_id=writer.run_id,
                 host_artifacts_dir=host_artifacts_dir,
+                sandbox_task_name=getattr(task_meta.get("task_data"), "sandbox_task_name", None),
             )
             writer.emit_event(
                 "agent_run_started",
@@ -539,7 +542,11 @@ async def run_one_unit(
             # ============================================================
             # Lifecycle status promotion (LOG_SPEC §4)
             # ============================================================
-            if run_result is not None and run_result.status == "timeout":
+            if eval_status == "failed":
+                status = "failed"
+                error_str = (eval_error or {}).get("message", "evaluation failed")
+                error_obj = eval_error
+            elif run_result is not None and run_result.status == "timeout":
                 status = "timeout"
                 error_str = run_result.error
             elif run_result is not None and run_result.status == "failed":
@@ -553,10 +560,6 @@ async def run_one_unit(
             elif eval_status == "timeout":
                 status = "timeout"
                 error_str = (eval_error or {}).get("message", "evaluation timed out")
-                error_obj = eval_error
-            elif eval_status == "failed":
-                status = "failed"
-                error_str = (eval_error or {}).get("message", "evaluation failed")
                 error_obj = eval_error
             else:
                 status = "completed"
@@ -692,14 +695,14 @@ def _trajectory_status(agent_status: str, eval_status: str) -> str:
     """Return the whole-episode status recorded in trajectory final metrics."""
     # Match the lifecycle promotion order below exactly so trajectory.json and
     # run.json cannot disagree when both phases fail differently.
+    if eval_status == "failed":
+        return "failed"
     if agent_status == "timeout":
         return "timeout"
     if agent_status == "failed":
         return "failed"
     if eval_status == "timeout":
         return "timeout"
-    if eval_status == "failed":
-        return "failed"
     return "completed"
 
 
@@ -738,6 +741,7 @@ def _build_executor(
     agent_name: str,
     run_id: str,
     host_artifacts_dir: Path,
+    sandbox_task_name: str | None = None,
 ) -> BaseExecutor:
     """Dispatch yaml ``executor: <type>`` to the concrete substrate adapter.
 
@@ -749,12 +753,15 @@ def _build_executor(
     env_passthrough = _collect_env_passthrough()
     if executor_type == "sandbox":
         sb = env.sandbox
+        if sandbox_task_name is not None:
+            run_id = uuid.uuid4().hex
+            sb = replace(sb, id=run_id, metadata={})
         sep = "/" if sb.is_linux else "\\"
         remote_work_dir = f"{sb.work_dir_base.rstrip(sep)}{sep}{agent_name}{sep}{run_id}"
         return SandboxExecutor(
             config=config,
             work_dir=remote_work_dir,
-            sandbox=env.sandbox,
+            sandbox=sb,
             env=env_passthrough,
         )
     if executor_type == "local":

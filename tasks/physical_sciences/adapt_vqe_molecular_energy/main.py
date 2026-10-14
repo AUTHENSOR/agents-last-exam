@@ -96,11 +96,9 @@ the tier structure, the visible output schema, and the library constraints.
    - Tier 2 / 3: `molecule`, `energy_ha`, `method`, `adapt_iterations`,
      `n_parameters`, `operator_sequence`
 
-The evaluator replays your ordered excitation sequence and final parameters
-from the public Hamiltonian and Hartree-Fock state, without reoptimizing them.
-Follow the operator sign/order convention in problem_spec.md. Both reported
-and replayed energies must meet the original tier accuracy, and must agree
-within 5e-4 Ha. Exact diagonalization with fabricated ADAPT metadata is invalid.
+Report the energy of the variational state defined by the supplied HF state,
+your ordered excitation sequence, and final parameters. Follow the operator
+sign/order convention in problem_spec.md and meet the original tier accuracy.
 
 ## Constraints
 - Allowed libraries: NumPy and SciPy only.

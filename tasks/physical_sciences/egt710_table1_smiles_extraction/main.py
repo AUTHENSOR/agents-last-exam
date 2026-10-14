@@ -120,7 +120,6 @@ Use the uploaded paper PDF to reconstruct the nine compounds in **Table 1** and 
 - Rows are matched by `Compound_ID`
 - `SMILES` is checked by chemical identity, not raw string equality
 - `IC50_uM` and `Solubility_mM` must match the reference values
-- Final score = fraction of correctly matched rows out of 9
 """
 
     def to_metadata(self) -> dict:

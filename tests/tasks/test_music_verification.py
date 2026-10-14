@@ -10,6 +10,10 @@ from PIL import Image
 from tasks.visual_media.music_transcription import main, verification
 
 
+def complete_part_coverage():
+    return [{"part_id": "piano", "complete": True, "first_page": 1, "last_page": 2, "staff": "Piano", "evidence": "Final D4 quarter note"}]
+
+
 class MemorySession:
     def __init__(self, files):
         self.files = files
@@ -73,7 +77,7 @@ def delivery(monkeypatch):
 
     async def judge(**kwargs):
         calls.append(kwargs)
-        return {"notation_ui": True, "same_score": True, "complete_pdf": True, "layout_score": 1, "reason": "Controlled judge response"}
+        return {"notation_ui": True, "same_score": True, "complete_pdf": True, "layout_score": 1, "reason": "Controlled judge response", "part_coverage": complete_part_coverage()}
 
     monkeypatch.setattr(verification, "render_score", render)
     monkeypatch.setattr(verification, "judge_documents", judge)
@@ -206,10 +210,37 @@ async def test_truncated_or_unrelated_pdf_fails_the_document_gate(delivery, monk
     task, session, _ = delivery
 
     async def incomplete(**kwargs):
-        return {"notation_ui": True, "same_score": True, "complete_pdf": False, "layout_score": 1}
+        return {"notation_ui": True, "same_score": True, "complete_pdf": False, "layout_score": 1, "part_coverage": complete_part_coverage()}
 
     monkeypatch.setattr(verification, "judge_documents", incomplete)
     assert await main.evaluate(task, session) == [0]
+
+
+@pytest.mark.asyncio
+async def test_missing_lower_sounding_part_overrides_global_complete_claim(delivery, monkeypatch):
+    task, session, calls = delivery
+
+    async def clipped(**kwargs):
+        calls.append(kwargs)
+        return {"notation_ui": True, "same_score": True, "complete_pdf": True, "layout_score": 1, "part_coverage": [{"part_id": "piano", "complete": False, "first_page": 1, "last_page": None, "staff": "", "evidence": "Ending D4 is below the page boundary"}]}
+
+    monkeypatch.setattr(verification, "judge_documents", clipped)
+    assert await main.evaluate(task, session) == [0]
+    assert '"pitch": "D4"' in calls[0]["prompt"]
+    assert "Both PDFs can share the same clipping defect" in calls[0]["prompt"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("coverage", [None, [], [{"part_id": "other", "complete": True}], [{"part_id": "piano", "complete": True, "evidence": "Present", "first_page": 99, "last_page": 99, "staff": "Piano"}]])
+async def test_global_pdf_pass_without_valid_part_evidence_is_not_a_grade(delivery, monkeypatch, coverage):
+    task, session, _ = delivery
+
+    async def incomplete_response(**kwargs):
+        return {"notation_ui": True, "same_score": True, "complete_pdf": True, "layout_score": 1, "part_coverage": coverage}
+
+    monkeypatch.setattr(verification, "judge_documents", incomplete_response)
+    with pytest.raises(RuntimeError, match="Document judge"):
+        await main.evaluate(task, session)
 
 
 @pytest.mark.asyncio
@@ -254,12 +285,14 @@ async def test_document_judge_requires_complete_high_effort_response(monkeypatch
         async def __aexit__(self, *args):
             return None
 
-    monkeypatch.setattr(verification, "AsyncOpenAI", lambda **kwargs: Client())
-    monkeypatch.setattr(verification, "_resolve_client_kwargs", lambda: {})
+    from tasks.utils import evaluation
+
+    monkeypatch.setattr(evaluation, "AsyncOpenAI", lambda **kwargs: Client())
+    monkeypatch.setenv("JUDGE_API_KEY", "test-key")
     if finish_reason == "stop":
         assert await verification.judge_documents(prompt="Review", image_bytes_list=[b"image"]) == {"same_score": True}
     else:
-        with pytest.raises(RuntimeError, match="Incomplete"):
+        with pytest.raises(RuntimeError, match="incomplete"):
             await verification.judge_documents(prompt="Review", image_bytes_list=[b"image"])
     assert calls[0]["reasoning_effort"] == "high"
     assert calls[0]["messages"][0]["content"][1]["image_url"]["detail"] == "high"

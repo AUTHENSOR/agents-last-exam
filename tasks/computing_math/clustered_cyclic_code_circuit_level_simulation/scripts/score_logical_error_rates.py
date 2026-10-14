@@ -1,12 +1,4 @@
-"""Score clustered-cyclic code logical error-rate CSV outputs.
-
-The task specifies one deterministic simulation workflow and one Stim seed per
-grid row. The hidden reference was generated with that exact workflow and the
-declared 5,000-shot workload. The scorer validates the complete failure-count
-table, in addition to schema and formula consistency. A conforming
-implementation receives the same detector samples and reproduces the same
-integer counts, while a fabricated qualitative curve does not pass.
-"""
+"""Validate simulation tables using independent-sample count comparisons."""
 
 from __future__ import annotations
 
@@ -19,6 +11,8 @@ from decimal import Decimal, InvalidOperation
 from io import StringIO
 from pathlib import Path
 from typing import Any
+
+from scipy.stats import chi2, fisher_exact
 
 EXPECTED_COLUMNS = [
     "code",
@@ -36,6 +30,9 @@ EXPECTED_COLUMNS = [
 
 KEY_FIELDS = ["code", "p_physical"]
 EXACT_INT_FIELDS = ["n", "k", "d", "num_rounds", "num_shots"]
+ROW_FAMILY_ALPHA = 0.001
+TABLE_ALPHA = 0.001
+
 
 @dataclass
 class LogicalErrorRateScoreResult:
@@ -97,7 +94,7 @@ def _parse_int(value: Any, field: str, reasons: list[str], row_key: str) -> int 
     except InvalidOperation:
         reasons.append(f"invalid_integer:{row_key}:{field}")
         return None
-    if parsed != parsed.to_integral_value():
+    if not parsed.is_finite() or parsed != parsed.to_integral_value():
         reasons.append(f"non_integer:{row_key}:{field}")
         return None
     return int(parsed)
@@ -114,7 +111,9 @@ def _row_key(row: dict[str, str], reasons: list[str], label: str) -> tuple[str, 
     return code, p_physical
 
 
-def _index_rows(rows: list[dict[str, str]], label: str, reasons: list[str]) -> dict[tuple[str, Decimal], dict[str, str]]:
+def _index_rows(
+    rows: list[dict[str, str]], label: str, reasons: list[str]
+) -> dict[tuple[str, Decimal], dict[str, str]]:
     indexed: dict[tuple[str, Decimal], dict[str, str]] = {}
     for idx, row in enumerate(rows, start=1):
         key = _row_key(row, reasons, f"{label}:row{idx}")
@@ -144,12 +143,30 @@ def score_logical_error_rates_bytes(
     *, agent_bytes: bytes, reference_bytes: bytes
 ) -> LogicalErrorRateScoreResult:
     _, reference_rows, reasons = _parse_csv_bytes(reference_bytes, "reference")
+    if reasons:
+        raise ValueError("Invalid QEC reference: " + ";".join(reasons))
+    reference = _index_rows(reference_rows, "reference", reasons)
+    reference_parameters: dict[tuple[str, Decimal], dict[str, int]] = {}
+    for key, row in reference.items():
+        row_key = f"{key[0]}:{key[1]}"
+        parameters = {}
+        for field in [*EXACT_INT_FIELDS, "num_failures"]:
+            value = _parse_int(row.get(field), field, reasons, row_key)
+            if value is not None:
+                parameters[field] = value
+                if field in EXACT_INT_FIELDS and value <= 0:
+                    reasons.append(f"nonpositive_parameter:{row_key}:{field}")
+        if "num_failures" in parameters and "num_shots" in parameters:
+            if not 0 <= parameters["num_failures"] <= parameters["num_shots"]:
+                reasons.append(f"num_failures_out_of_range:{row_key}")
+        reference_parameters[key] = parameters
+    if reasons:
+        raise ValueError("Invalid QEC reference: " + ";".join(reasons))
+
     _, agent_rows, agent_parse_reasons = _parse_csv_bytes(agent_bytes, "agent")
     reasons.extend(agent_parse_reasons)
     if reasons:
         return LogicalErrorRateScoreResult(score=0.0, passed=False, reasons=reasons)
-
-    reference = _index_rows(reference_rows, "reference", reasons)
     agent = _index_rows(agent_rows, "agent", reasons)
     if reasons:
         return LogicalErrorRateScoreResult(score=0.0, passed=False, reasons=reasons)
@@ -165,6 +182,7 @@ def score_logical_error_rates_bytes(
     if reasons:
         return LogicalErrorRateScoreResult(score=0.0, passed=False, reasons=reasons)
 
+    probabilities: list[float] = []
     for key in sorted(reference_keys, key=lambda item: (item[0], item[1])):
         row_key = f"{key[0]}:{key[1]}"
         ref = reference[key]
@@ -181,17 +199,18 @@ def score_logical_error_rates_bytes(
         parsed_ints: dict[str, int] = {}
         for field in EXACT_INT_FIELDS:
             got_int = _parse_int(got.get(field), field, reasons, row_key)
-            ref_int = _parse_int(ref.get(field), field, reasons, row_key)
-            if got_int is None or ref_int is None:
+            ref_int = reference_parameters[key][field]
+            if got_int is None:
                 continue
             parsed_ints[field] = got_int
             if got_int != ref_int:
                 reasons.append(f"{field}_mismatch:{row_key}")
+            if got_int <= 0:
+                reasons.append(f"nonpositive_parameter:{row_key}:{field}")
 
         failures = _parse_int(got.get("num_failures"), "num_failures", reasons, row_key)
-        reference_failures = _parse_int(
-            ref.get("num_failures"), "reference_num_failures", reasons, row_key
-        )
+        reference_failures = reference_parameters[key]["num_failures"]
+        reference_shots = reference_parameters[key]["num_shots"]
         shots = parsed_ints.get("num_shots")
         rounds = parsed_ints.get("num_rounds")
         k = parsed_ints.get("k")
@@ -201,22 +220,35 @@ def score_logical_error_rates_bytes(
             got.get("lfr_per_round_per_qubit"), "lfr_per_round_per_qubit", reasons, row_key
         )
 
-        if failures is not None and shots is not None:
+        if failures is not None and shots is not None and shots > 0:
             if failures < 0 or failures > shots:
                 reasons.append(f"num_failures_out_of_range:{row_key}")
             if p_logical is not None and not _close_numeric(p_logical, failures / shots):
                 reasons.append(f"p_logical_inconsistent:{row_key}")
         if (
             failures is not None
-            and reference_failures is not None
-            and failures != reference_failures
+            and shots is not None
+            and shots == reference_shots
+            and 0 <= failures <= shots
         ):
-            reasons.append(f"num_failures_mismatch:{row_key}")
+            probability = float(
+                fisher_exact(
+                    [
+                        [failures, shots - failures],
+                        [reference_failures, reference_shots - reference_failures],
+                    ]
+                ).pvalue
+            )
+            probabilities.append(probability)
+            if probability < ROW_FAMILY_ALPHA / len(reference_keys):
+                reasons.append(f"failure_distribution_mismatch:{row_key}")
 
         if (
             p_logical is not None
             and lfr is not None
             and rounds is not None
+            and rounds > 0
+            and 0.0 <= p_logical <= 1.0
             and not _close_numeric(lfr, _consistent_rate(p_logical, rounds))
         ):
             reasons.append(f"lfr_formula_inconsistent:{row_key}")
@@ -225,11 +257,21 @@ def score_logical_error_rates_bytes(
             p_logical is not None
             and lfr_per_qubit is not None
             and rounds is not None
+            and rounds > 0
             and k is not None
+            and k > 0
+            and 0.0 <= p_logical <= 1.0
             and not _close_numeric(lfr_per_qubit, _consistent_rate(p_logical, rounds, k))
         ):
             reasons.append(f"lfr_per_qubit_formula_inconsistent:{row_key}")
 
+        if p_logical is not None and not 0.0 <= p_logical <= 1.0:
+            reasons.append(f"p_logical_out_of_range:{row_key}")
+
+    if probabilities:
+        statistic = -2.0 * sum(math.log(max(value, 1e-300)) for value in probabilities)
+        if chi2.sf(statistic, 2 * len(probabilities)) < TABLE_ALPHA:
+            reasons.append("table_failure_distribution_mismatch")
     passed = not reasons
     return LogicalErrorRateScoreResult(
         score=1.0 if passed else 0.0,

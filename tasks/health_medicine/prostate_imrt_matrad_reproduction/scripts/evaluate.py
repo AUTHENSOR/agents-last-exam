@@ -593,7 +593,7 @@ def gate_G7_dvh_csv_honesty(
 
 def report_section_coverage(text: str) -> set[str]:
     """Recognize report topics from headings or quantitative summary sections."""
-    sections: list[tuple[str, list[str]]] = [("", [])]
+    sections: list[tuple[str, int, list[str]]] = [("", 0, [])]
     fence = ""
     for line in text.splitlines():
         marker = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
@@ -606,35 +606,56 @@ def report_section_coverage(text: str) -> set[str]:
         if marker:
             fence = marker[1]
             continue
-        heading = re.match(r"^ {0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$", line)
+        heading = re.match(r"^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$", line)
         if heading:
-            sections.append((heading[1].casefold(), []))
+            sections.append((heading[2].casefold(), len(heading[1]), []))
         else:
-            sections[-1][1].append(line)
+            sections[-1][2].append(line)
 
     covered: set[str] = set()
-    for heading, lines in sections:
+    body = " ".join(line for _, _, lines in sections for line in lines).casefold()
+    angle_body = re.sub(r"(?<=\d)\s*(?:°|degrees?\b|deg\b)", "", body)
+    if (
+        re.search(
+            r"\b(?:7|seven)(?:-beam\b|\s+(?:coplanar\s+)?(?:\d+(?:\.\d+)?\s*mv\s+)?(?:imrt\s+)?(?:beams|fields)\b)",
+            body,
+        )
+        and re.search(r"\b6(?:\.0+)?\s*mv\b", body)
+        and re.search(
+            r"\b(?:gantry(?:\s+angles?)?(?:\s*\((?:deg(?:rees?)?|°)\))?\s*:?|(?:beams|fields)\s+at)\s*"
+            r"\d+(?:\.\d+)?(?:\s*[,/]\s*\d+(?:\.\d+)?){6}\b"
+            r"(?!\s*[,/]\s*\d)",
+            angle_body,
+        )
+    ):
+        covered.add("beam summary")
+    outcomes: set[str] = set()
+    dvh_level: int | None = None
+    number_pattern = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?"
+    for heading, level, lines in sections:
+        heading = re.sub(r"^\d+(?:\.\d+)*[.)]?\s+", "", heading)
+        heading = re.sub(r"\s*\([^)]*\)\s*$", "", heading)
         heading_topics = {
-            re.sub(r"\s*\([^)]*\)\s*$", "", part).strip()
+            part.strip()
             for part in re.split(r"[/&]", heading)
         }
-        if "independent dvh" in heading_topics:
+        if any(
+            re.fullmatch(
+                r"(?:(?:final|independent|quantitative)\s+)*(?:dvh|dose[- ]volume histograms?)"
+                r"(?:\s+(?:summary|results))?",
+                topic,
+            )
+            for topic in heading_topics
+        ):
             heading_topics.add("dvh")
         covered.update(heading_topics & {"beam summary", "dvh", "constraint compliance"})
-        body = " ".join(lines).casefold()
-        if (
-            re.search(
-                r"\b\d+(?:-beam\b|\s+(?:coplanar\s+)?(?:\d+(?:\.\d+)?\s*mv\s+)?(?:imrt\s+)?(?:beams|fields)\b)",
-                body,
-            )
-            and re.search(r"\b\d+(?:\.\d+)?\s*mv\b", body)
-            and re.search(r"\bgantry angles?\s*:\s*\d+(?:\s*,\s*\d+){6}\b", body)
-        ):
-            covered.add("beam summary")
-        if "dvh" not in heading_topics:
+        if dvh_level is not None and level <= dvh_level:
+            dvh_level = None
+        if "dvh" in heading_topics:
+            dvh_level = level
+        if dvh_level is None:
             continue
         columns: list[str] = []
-        outcomes: set[str] = set()
         for line in lines:
             if not line.strip().startswith("|"):
                 columns = []
@@ -642,29 +663,51 @@ def report_section_coverage(text: str) -> set[str]:
             cells = [
                 cell.strip().strip("*").casefold() for cell in line.strip().strip("|").split("|")
             ]
-            if {"structure", "metric", "value"} <= set(cells) and {"pass", "status"} & set(cells):
+            if {"structure", "metric", "value"} <= set(cells) and {"pass", "status", "result"} & set(cells):
                 columns = cells
                 continue
             if not columns or len(cells) != len(columns):
                 continue
             row = dict(zip(columns, cells))
             value = re.fullmatch(
-                r"([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)\s*(%|gy)", row["value"]
+                "(" + number_pattern + r")\s*(%|gy)?", row["value"]
             )
             if value is None or not math.isfinite(float(value[1])):
                 continue
-            if row.get("pass", row.get("status")) not in {"true", "false", "pass", "fail"}:
+            if row.get("pass", row.get("status", row.get("result"))) not in {"true", "false", "pass", "fail"}:
                 continue
-            try:
-                key = csv_metric_key(row["structure"], row["metric"])
-            except ValueError:
-                continue
-            if key in DVH_CONSTRAINTS:
-                units = "%" if DVH_CONSTRAINTS[key]["metric"] == "V_pct" else "gy"
-                if value[2] == units:
-                    outcomes.add(key)
-        if set(DVH_CONSTRAINTS) - {"Bowel_Dmax"} <= outcomes:
-            covered.add("constraint compliance")
+            structures = [row["structure"]]
+            if re.fullmatch(
+                r"fem(?:oral)?[ _-]*heads?[ _-]*\(?\s*(?:l|left)\s*(?:[/&+]|and)\s*(?:r|right)\s*\)?",
+                row["structure"],
+            ):
+                structures = ["FemHead_L", "FemHead_R"]
+            for structure in structures:
+                try:
+                    key = csv_metric_key(structure, row["metric"])
+                except ValueError:
+                    continue
+                if key not in DVH_CONSTRAINTS:
+                    continue
+                spec = DVH_CONSTRAINTS[key]
+                units = "%" if spec["metric"] == "V_pct" else "gy"
+                if (value[2] or row.get("units")) != units:
+                    continue
+                if "units" in row and row["units"] != units:
+                    continue
+                if "limit" in row:
+                    limit = re.fullmatch(
+                        r"(<=|>=|≤|≥)\s*(" + number_pattern + r")\s*(%|gy)", row["limit"]
+                    )
+                    if limit is None or (
+                        limit[1].replace("≤", "<=").replace("≥", ">=") != spec["limit_op"]
+                        or float(limit[2]) != spec["limit"]
+                        or limit[3] != units
+                    ):
+                        continue
+                outcomes.add(key)
+    if set(DVH_CONSTRAINTS) - {"Bowel_Dmax"} <= outcomes:
+        covered.add("constraint compliance")
     return covered
 
 

@@ -612,6 +612,20 @@ def test_staged_revision_has_reproducible_hashes_and_preserved_sources(
     if not before.exists():
         pytest.skip("Original release backup is not installed")
     build(before, tmp_path)
+    rebuilt_contract = json.loads((tmp_path / "input/output_contract.json").read_text())
+    example = {
+        key: value
+        for key, value in rebuilt_contract["example_row"].items()
+        if key != "_comment"
+    }
+    expected = next(
+        row
+        for row in csv.DictReader(io.StringIO(official_reference))
+        if row["sdtm_variable"] == "AETERM"
+    )
+    assert example == expected
+    result = scorer.score_mapping_csv(render([example]), render([expected]), variant="base")
+    assert result.score == result.strict_score == 1.0
     manifest = json.loads((DATA / "reference/source_manifest.json").read_text())
     for relative, expected in manifest["active_revision"]["original_file_hashes"].items():
         assert hashlib.sha256((before / relative).read_bytes()).hexdigest() == expected
@@ -621,13 +635,17 @@ def test_staged_revision_has_reproducible_hashes_and_preserved_sources(
         "reference/ae_mapping.csv",
         "reference/source_manifest.json",
     ]:
-        assert (
-            (DATA / relative).read_bytes()
-            == (override / relative).read_bytes()
-            == (tmp_path / relative).read_bytes()
-        )
+        assert (DATA / relative).read_bytes() == (override / relative).read_bytes()
+        if relative in ("input/task_brief.md", "reference/ae_mapping.csv"):
+            assert (DATA / relative).read_bytes() == (tmp_path / relative).read_bytes()
     for relative, expected in manifest["active_revision"]["generated_file_hashes"].items():
         assert hashlib.sha256((DATA / relative).read_bytes()).hexdigest() == expected
+    rebuilt_manifest = json.loads((tmp_path / "reference/source_manifest.json").read_text())
+    assert rebuilt_manifest["active_revision"]["original_file_hashes"] == (
+        manifest["active_revision"]["original_file_hashes"]
+    )
+    for relative, expected in rebuilt_manifest["active_revision"]["generated_file_hashes"].items():
+        assert hashlib.sha256((tmp_path / relative).read_bytes()).hexdigest() == expected
     for filename, source in manifest["raw_files"].items():
         relative = (
             f"reference/{filename}"

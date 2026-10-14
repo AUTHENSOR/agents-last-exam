@@ -11,6 +11,7 @@ import sys
 import tarfile
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -144,9 +145,13 @@ def replay_evaluate(task, arguments):
         "TASK_NAME": task,
         "score_output_bundle": scorer.score_output_bundle,
         "REQUIRED_OUTPUT_FILES": healthcare.REQUIRED_OUTPUT_FILES,
+        "REQUIRED_REFERENCE_FILES": healthcare.REQUIRED_REFERENCE_FILES,
     }
     exec(compile(ast.fix_missing_locations(module), str(path), "exec"), namespace)
     if scorer is healthcare:
+        namespace["check_figure_interpretation"] = AsyncMock(
+            return_value={"passed": True, "reason": "isolated numerical replay"}
+        )
         files = {
             f"/{prefix}/{name}": value
             for prefix, key in (("candidate", "candidate_files"), ("reference", "reference_files"))
@@ -156,7 +161,6 @@ def replay_evaluate(task, arguments):
             "remote_output_dir": "/candidate",
             "reference_dir": "/reference",
             "reference_answers_file": "/reference/audit_answers.json",
-            "reference_memo_file": "/reference/audit_memo.md",
         }
     else:
         files = {f"/{argument}": value for argument, value in arguments.items()}
@@ -217,54 +221,99 @@ def test_selected_native_artifact_replay(artifacts, frozen_scorers, task, label,
 
 
 @pytest.mark.parametrize(
-    "claim",
+    "key,value",
     [
-        "Our Figure 1b result increases from 17.7% to 46.5% Black.",
-        "Our Figure 1b result is 59% Black after correction.",
-        "The public synthetic Figure 1b result is 46.5% Black after correction.",
-        "For the graded answer, Figure 1b reaches 59 percent Black.",
-        "Random selection within predicted-cost bins enrolls 17.7% Black; Figure 1b reaches 46.5%.",
-        "Highest predicted cost enrolls 17.7% Black.",
+        ("figure1b_percentile_97_before", 0.177),
+        ("figure1b_percentile_97_after", 0.465),
+        ("figure1b_percentile_97_after", 0.59),
+        ("figure1b_percentile_97_ratio", 0.59),
+        ("table3_predicted_health_in_cost_bin_frac_black", 0.177),
+        ("table3_highest_predicted_cost_frac_black", 0.177),
     ],
 )
-def test_genuine_private_value_substitutions_remain_rejected(artifacts, claim):
+def test_wrong_public_numeric_answers_remain_rejected(artifacts, key, value):
     original = artifacts["healthcare_bias_audit_27a_public_replication_v1", "codex_after_repair"]
     candidate = dict(original["candidate_files"])
-    candidate["audit_memo.md"] += "\n\n" + claim
+    answers = json.loads(candidate["audit_answers.json"])
+    assert answers[key] != value
+    answers[key] = value
+    candidate["audit_answers.json"] = json.dumps(answers)
     result = healthcare.score_output_bundle(
         candidate_files=candidate, reference_files=original["reference_files"]
     )
     assert result.score == 0
-    assert result.reason == "audit_memo.md: private_paper_value_present_without_context"
+    assert result.reason == "audit_answers.json: value_mismatch"
+    assert result.details["key"] == key
 
 
-def test_truthful_random_row_is_not_a_global_number_exemption(artifacts):
+def test_public_memo_needs_no_private_comparison_or_random_keyword(artifacts):
     arguments = artifacts["healthcare_bias_audit_27a_public_replication_v1", "kimi_after"]
     candidate = dict(arguments["candidate_files"])
-    candidate["audit_memo.md"] += "\n\nFigure 1b starts with 17.7% Black."
+    answers = json.loads(candidate["audit_answers.json"])
+    candidate["audit_memo.md"] = (
+        "This public synthetic replication shows that cost-based ranking understates clinical "
+        "need for Black patients. Cost is an imperfect proxy for need because access and "
+        "utilization affect spending. Diagnosis of the mechanism matters: retraining on the "
+        "same cost label does not resolve the target mismatch. Prefer a need-based label for "
+        "allocation. "
+        f"Figure 1b at percentile 97 gives {answers['figure1b_percentile_97_before']} before "
+        f"and {answers['figure1b_percentile_97_after']} after the swap. "
+        "Table 3: sampling within predicted-cost bins gives 17.7% Black, compared with "
+        f"{answers['table3_predicted_health_in_cost_bin_frac_black']} for predicted health "
+        "within those bins."
+    )
+    reference = {
+        name: arguments["reference_files"][name] for name in healthcare.REQUIRED_REFERENCE_FILES
+    }
+    result = healthcare.score_output_bundle(
+        candidate_files=candidate, reference_files=reference
+    )
+    assert result.score == 1.0, result.to_dict()
+    assert replay_evaluate(
+        "healthcare_bias_audit_27a_public_replication_v1",
+        {"candidate_files": candidate, "reference_files": reference},
+    ) == [1.0]
+
+
+@pytest.mark.parametrize("candidate_fraction", ["", "0.115", "0.224"])
+def test_sampling_fraction_must_match_the_public_table3_cell(artifacts, candidate_fraction):
+    arguments = artifacts["healthcare_bias_audit_27a_public_replication_v1", "kimi_after"]
+    candidate = dict(arguments["candidate_files"])
+    filename = "results/table3.csv"
+    reader = csv.DictReader(io.StringIO(candidate[filename]))
+    rows = list(reader)
+    row = next(row for row in rows if row["population"] == "Random, in predicted cost bin")
+    assert float(row["frac_black"]) == pytest.approx(0.177)
+    row["frac_black"] = candidate_fraction
+    stream = io.StringIO()
+    writer = csv.DictWriter(stream, fieldnames=reader.fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+    candidate[filename] = stream.getvalue()
     result = healthcare.score_output_bundle(
         candidate_files=candidate, reference_files=arguments["reference_files"]
     )
-    assert result.reason == "audit_memo.md: private_paper_value_present_without_context"
-
-
-@pytest.mark.parametrize("reference_fraction", [None, 0.115, 0.224])
-def test_random_percentage_requires_the_matching_table3_cell(reference_fraction):
-    claim = "Random selection within predicted-cost bins enrolled 17.7% Black."
-    assert healthcare._check_forbidden_paper_values(claim.lower(), reference_fraction)
-    assert healthcare._check_forbidden_paper_values(claim.lower(), 0.177) is None
+    assert result.score == 0
+    assert result.reason == "results/table3.csv: value_mismatch"
+    assert result.details["column"] == "frac_black"
 
 
 @pytest.mark.parametrize(
-    "claim",
+    "memo,reason",
     [
-        "The original paper reported 17.7% to 46.5%.",
-        "The private-data result was corrected to 59 percent.",
-        "Do not use 17.7% to 46.5% as the graded answer.",
+        ("", "empty"),
+        ("The public synthetic data does not understate need for Black patients.", "incorrect_conclusion"),
+        ("Keep the cost-based label for allocation.", "incorrect_recommendation"),
     ],
 )
-def test_explicit_private_paper_context_remains_allowed(claim):
-    assert healthcare._check_forbidden_paper_values(claim.lower(), 0.177) is None
+def test_empty_or_opposite_healthcare_memos_remain_rejected(artifacts, memo, reason):
+    arguments = artifacts["healthcare_bias_audit_27a_public_replication_v1", "kimi_after"]
+    candidate = arguments["candidate_files"] | {"audit_memo.md": memo}
+    result = healthcare.score_output_bundle(
+        candidate_files=candidate, reference_files=arguments["reference_files"]
+    )
+    assert result.score == 0
+    assert result.reason == "audit_memo.md: " + reason
 
 
 @pytest.mark.parametrize("task", list(TASKS))

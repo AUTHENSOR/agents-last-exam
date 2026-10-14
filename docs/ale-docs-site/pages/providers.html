@@ -22,6 +22,10 @@
     <pre><code>git clone git@github.com:rdi-berkeley/agents-last-exam.git
 cd agents-last-exam
 uv sync --all-packages</code></pre>
+    <p>
+      Use the frozen v1.1 task source with the matching image and data pins in
+      the <a href="/pages/configure.html#v1-1">release configuration</a>.
+    </p>
 
     <h2>Choose a sandbox provider</h2>
     <p>
@@ -42,7 +46,7 @@ uv sync --all-packages</code></pre>
         <tr>
           <td><a href="/pages/google-cloud.html"><strong>Google Cloud VMs</strong></a><br><code>gcloud</code></td>
           <td>A fresh GCE VM for every run unit</td>
-          <td>All 151 v1.1 tasks in <code>full.txt</code></td>
+          <td>All 150 v1.1 tasks in <code>full.txt</code></td>
           <td>Production benchmark runs and elastic concurrency</td>
         </tr>
         <tr>
@@ -60,13 +64,13 @@ uv sync --all-packages</code></pre>
         <tr>
           <td><a href="/pages/local-docker.html"><strong>Local containers</strong></a><br><code>docker</code></td>
           <td>A fresh Linux container for every run unit</td>
-          <td>102 supported tasks in <code>docker_support.txt</code></td>
+          <td>101 supported tasks in <code>docker_support.txt</code></td>
           <td>The lightest local path for the supported Linux subset</td>
         </tr>
         <tr>
           <td><a href="/pages/local.html"><strong>QEMU/KVM VMs</strong></a><br><code>qemu</code></td>
           <td>A fresh QEMU/KVM guest VM for every run unit</td>
-          <td>146 CPU-compatible Ubuntu and Windows tasks in <code>cpu.txt</code></td>
+          <td>145 CPU-compatible Ubuntu and Windows tasks in <code>cpu.txt</code></td>
           <td>Full-OS local testing, including Windows, without cloud VMs</td>
         </tr>
         <tr>

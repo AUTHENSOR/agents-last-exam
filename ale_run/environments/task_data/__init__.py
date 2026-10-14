@@ -22,6 +22,7 @@ invokes its two functions in the right phases.
 from __future__ import annotations
 
 import shlex
+from dataclasses import replace
 from typing import Any, Protocol
 
 from ...base_interface import SandboxHandle, TaskDataSpec
@@ -70,14 +71,52 @@ def select(task_data_source: str):
 # ============================================================================
 
 def task_subdir(sandbox: SandboxHandle, task_data: TaskDataSpec) -> str:
-    """``<task_data_root>/<domain>/<task>/<variant>`` with OS-native separator."""
+    """Sandbox destination, independent of the canonical source identity."""
     sep = "/" if sandbox.is_linux else "\\"
     return sep.join([
         sandbox.task_data_root.rstrip("/\\"),
         task_data.domain_name,
-        task_data.task_name,
+        task_data.sandbox_task_name or task_data.task_name,
         task_data.variant_name,
     ])
+
+
+async def prepare_task_subdir(sandbox: SandboxHandle, task_data: TaskDataSpec) -> str:
+    """Apply an opt-in Linux workspace alias before staging or solver access."""
+    base = task_subdir(sandbox, task_data)
+    if not task_data.sandbox_task_name or task_data.sandbox_task_name == task_data.task_name:
+        return base
+    if not sandbox.is_linux:
+        raise NotImplementedError("Sandbox task aliases currently require Linux")
+    canonical = task_subdir(sandbox, replace(task_data, sandbox_task_name=None))
+    script = """
+import os
+from pathlib import Path
+import sys
+
+source, destination = map(Path, sys.argv[1:])
+for candidate in (source, destination):
+    if any(parent.is_symlink() for parent in (candidate, *candidate.parents)):
+        raise RuntimeError('Task alias paths must not traverse symlinks')
+    if candidate.exists() and not candidate.is_dir():
+        raise RuntimeError('Task alias path is not a directory')
+if source.exists():
+    if destination.exists() and any(destination.iterdir()):
+        raise RuntimeError('Neutral task directory is not empty')
+    if os.path.ismount(source):
+        raise RuntimeError('Cannot alias a mounted task directory')
+    os.rename(source, destination)
+"""
+    result = await sandbox.run_command(
+        shlex.join([
+            sandbox.python, "-c", script,
+            canonical.rsplit("/", 1)[0], base.rsplit("/", 1)[0],
+        ]),
+        timeout=60,
+    )
+    if result.returncode:
+        raise RuntimeError(f"Could not prepare neutral task workspace: {result.stderr}")
+    return base
 
 
 def join(sandbox: SandboxHandle, *parts: str) -> str:
@@ -94,4 +133,4 @@ def shell_q(sandbox: SandboxHandle, path: str) -> str:
     return shlex.quote(path) if sandbox.is_linux else f"'{path}'"
 
 
-__all__ = ["select", "task_subdir", "join", "shell_q"]
+__all__ = ["select", "task_subdir", "prepare_task_subdir", "join", "shell_q"]

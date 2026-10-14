@@ -13,6 +13,7 @@ from tasks.health_medicine.ltmle_targeted_bootstrap_simulation_study import main
 from tasks.health_medicine.ltmle_targeted_bootstrap_simulation_study.scripts import (
     verify_hidden_smoke as verifier,
 )
+from tasks.utils.evaluation import JudgeInfrastructureError
 
 
 METHODS = [
@@ -413,8 +414,23 @@ async def test_no_usable_pinned_runtime_is_evaluator_error(invalid_result):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("hidden_passed", [True, False])
-async def test_production_entrypoint_passes_verified_pinned_runtime(bundle, hidden_passed):
+@pytest.mark.parametrize("report_passed", [True, False, None])
+async def test_production_entrypoint_passes_verified_pinned_runtime(
+    bundle, hidden_passed, report_passed, monkeypatch
+):
     metadata = task.LtmleTargetedBootstrapConfig().to_metadata()
+    report_calls = []
+
+    async def check_report(payload, summary, scenarios):
+        report_calls.append(payload)
+        assert payload == (bundle.candidate / "report.pdf").read_bytes()
+        assert summary == (bundle.candidate / "summary.csv").read_bytes().decode()
+        assert scenarios == bundle.contract["public_benchmark"]["scenarios"]
+        if report_passed is None:
+            raise JudgeInfrastructureError("report judge unavailable")
+        return {"passed": report_passed, "reason": "precision check"}
+
+    monkeypatch.setattr(task, "check_report", check_report)
 
     class EvaluationSession(RuntimeSession):
         def __init__(self):
@@ -439,6 +455,10 @@ async def test_production_entrypoint_passes_verified_pinned_runtime(bundle, hidd
         async def write_file(self, path, content):
             self.written[path] = content
 
+        async def read_bytes(self, path):
+            assert path == metadata["output_report_file"]
+            return (bundle.candidate / "report.pdf").read_bytes()
+
         async def run_command(self, command, *, check=False):
             arguments = shlex.split(command)
             if arguments[0] == "timeout":
@@ -454,9 +474,14 @@ async def test_production_entrypoint_passes_verified_pinned_runtime(bundle, hidd
             return {"return_code": 0, "stdout": "", "stderr": ""}
 
     session = EvaluationSession()
-    assert await task.evaluate(SimpleNamespace(metadata=metadata), session) == [
-        float(hidden_passed)
-    ]
+    if hidden_passed and report_passed is None:
+        with pytest.raises(JudgeInfrastructureError, match="report judge unavailable"):
+            await task.evaluate(SimpleNamespace(metadata=metadata), session)
+    else:
+        assert await task.evaluate(SimpleNamespace(metadata=metadata), session) == [
+            float(hidden_passed and bool(report_passed))
+        ]
+    assert len(report_calls) == int(hidden_passed)
     arguments = session.verifier_arguments
     assert arguments[arguments.index("--rscript-binary") + 1] == task.PINNED_RSCRIPT_BINARY
     assert arguments[arguments.index("--candidate-dir") + 1] == metadata["remote_output_dir"]

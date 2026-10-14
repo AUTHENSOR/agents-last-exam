@@ -518,7 +518,9 @@ def test_public_contract_and_diagnostic_maxima(scorer, monkeypatch, tmp_path, re
         "Runtime guidance:", 1
     )[0]
     assert public in card["taskPrompt"]
-    assert "supersedes" in public and "raw 100 is not available" in public
+    assert "Bowel Dmax criterion is unassessed" in public
+    assert "All other structures and dose limits remain required" in public
+    assert "raw 100 is not available" not in public
     assert "PASS_THRESHOLD = 70" in main
     monkeypatch.setattr(scorer, "load_rtstruct", lambda path: copy.deepcopy(real_reference))
     report = scorer.run(tmp_path, DATA / "reference")
@@ -539,7 +541,7 @@ def test_public_replay_interface_matches_evaluator():
         assert field in prompt and field in card
     assert "dij.physicalDose{1}" in prompt
     assert "MATLAB v7" in prompt
-    assert "without applying the fraction count twice" in prompt
+    assert "without applying the fraction count twice" not in prompt
 
 
 @pytest.fixture

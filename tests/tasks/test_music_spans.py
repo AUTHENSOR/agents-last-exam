@@ -2,11 +2,31 @@ from dataclasses import replace
 from fractions import Fraction
 
 import pretty_midi
+import pytest
 
 from tasks.visual_media.music_transcription.main import TrackInfo
-from tasks.visual_media.music_transcription.notation import Mark, Note, Part, Score
+from tasks.visual_media.music_transcription.notation import Mark, Note, Part, Score, parse_musicxml
 from tasks.visual_media.music_transcription.notation_scoring import compare_notation
 from tasks.visual_media.music_transcription.playback import compare_playback
+
+
+@pytest.mark.parametrize("endpoint", ["stop", "start", "absent"])
+def test_harp_slur_ending_on_rest_retains_endpoint_validation(endpoint):
+    closing = f'<notations><slur type="{endpoint}" number="1"/></notations>' if endpoint != "absent" else ""
+    notation = f'''<score-partwise><part-list><score-part id="P21"><part-name>Harp</part-name></score-part></part-list>
+      <part id="P21"><measure number="39"><attributes><divisions>1</divisions></attributes>
+      <note><pitch><step>A</step><octave>3</octave></pitch><duration>2</duration><voice>5</voice><staff>2</staff>
+      <notations><slur type="start" number="1"/></notations></note></measure>
+      <measure number="40"><note><rest measure="yes"/><duration>3</duration><voice>5</voice><staff>2</staff>
+      {closing}</note></measure></part></score-partwise>'''.encode()
+    if endpoint != "stop":
+        with pytest.raises(ValueError, match="Overlapping|Unmatched"):
+            parse_musicxml(notation)
+        return
+    part = parse_musicxml(notation).parts[0]
+    assert len(part.notes) == 1
+    assert [(mark.value, mark.position, mark.staff) for mark in part.marks] == [("start", 0, "2"), ("stop", 2, "2")]
+    assert part.marks[0].number == part.marks[1].number
 
 
 def test_pedal_applies_to_both_piano_staves_and_cannot_be_silently_omitted():

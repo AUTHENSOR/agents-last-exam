@@ -38,6 +38,9 @@ except ModuleNotFoundError:  # pragma: no cover - local import fallback only
 
 from tasks.common_setup import BaseTaskSetup
 from tasks.linux_runtime import LinuxTaskConfig
+from tasks.health_medicine.ltmle_targeted_bootstrap_simulation_study.report_check import (
+    check_report,
+)
 
 
 _setup = BaseTaskSetup()
@@ -324,8 +327,8 @@ Requirements:
 1. Use the bundled longitudinal DGP, the local `lmtp-bootstrap` source tree, the variance paper, and the public benchmark materials under `input/public_benchmark/`.
 2. Cover the two public benchmark scenarios from `study_plan_public.json` and generate your own `summary.csv` plus `report.pdf` from a working pipeline.
 3. The public benchmark summary is visible for orientation, but do not treat it as a file to relocate or copy into `output/`.
-4. Follow scientific contract v2 (2026-09-10), not the superseded April numbers. Standard uses paired EIF variance. Full-data targeting uses cumulative density ratios; its point is shared by both targeted-bootstrap methods. Do not use the bundled raw-ratio `boot=TRUE` shortcut.
-5. `05` must honor a local `fixture_smoke_plan.csv` in place of the public plan. The evaluator copies only your six R scripts, stages sibling input/, then executes `05` and the two documented analysis functions in separate R sessions. Exact APIs, seed schedule, schemas, numerical boundary rules, and tolerances are in `SCIENTIFIC_CONTRACT.md`.
+4. Follow scientific contract v2 (2026-09-10). Standard uses paired EIF variance. Full-data targeting uses cumulative density ratios; its point is shared by both targeted-bootstrap methods.
+5. `05` must honor a local `fixture_smoke_plan.csv` in place of the public plan. The evaluator copies only your six R scripts, stages sibling input/, then executes `05` and the two documented analysis functions in separate R sessions. Exact APIs, seed schedule, schemas, and numerical boundary rules are in `SCIENTIFIC_CONTRACT.md`.
 6. Generate raw results, derive summary from them, and discuss the study and numerical diagnostics in your report. No dropped replications or bootstrap draws. Write solver-created files only under `{self.task_dir}/output`.
 """
 
@@ -539,4 +542,12 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
 
     hidden_passed = bool(hidden_payload.get("passed"))
     logger.info("hidden_smoke=%s", json.dumps(hidden_payload, ensure_ascii=True, sort_keys=True))
-    return [1.0 if hidden_passed else 0.0]
+    if not hidden_passed:
+        return [0.0]
+    report_result = await check_report(
+        await session.read_bytes(meta["output_report_file"]),
+        summary_text,
+        contract["hidden_smoke" if fixture_mode else "public_benchmark"]["scenarios"],
+    )
+    logger.info("report_precision=%s", json.dumps(report_result, ensure_ascii=True, sort_keys=True))
+    return [1.0 if report_result["passed"] else 0.0]

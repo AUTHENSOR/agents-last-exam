@@ -34,6 +34,7 @@ NATIVE_SCRIPTS = (
     "native_member_sections.py",
     "native_model_contract.py",
     "native_result_adapter.py",
+    "native_result_reader.py",
     "native_source_audit.py",
     "native_replay_case.py",
     "native_replay_family.py",
@@ -43,6 +44,12 @@ NATIVE_SCRIPTS = (
     "native_verify_delivery.py",
 )
 logger = logging.getLogger(__name__)
+PUBLIC_NATIVE_SCRIPTS = {
+    "native_input_adapter.py": "native_input_adapter.py",
+    "native_family_runner.py": "native_family_runner.py",
+    "native_member_sections.py": "native_member_sections.py",
+    "native_result_adapter.py": "native_result_reader.py",
+}
 
 
 async def upload_files(session, root, files):
@@ -108,7 +115,8 @@ async def setup_native(metadata, session):
         metadata["software_dir"],
         {
             **{
-                f"scripts/{name}": (ROOT / "scripts" / name).read_bytes() for name in NATIVE_SCRIPTS
+                f"scripts/{name}": (ROOT / "scripts" / source).read_bytes()
+                for name, source in PUBLIC_NATIVE_SCRIPTS.items()
             },
             **{
                 f"assets/{name}": (ROOT / "assets" / name).read_bytes()
@@ -116,6 +124,16 @@ async def setup_native(metadata, session):
             },
         },
     )
+    private_scripts = [
+        str(Path(metadata["software_dir"]) / "scripts" / name)
+        for name in NATIVE_SCRIPTS
+        if name not in PUBLIC_NATIVE_SCRIPTS
+    ]
+    remove_private = (
+        "from pathlib import Path; "
+        f"[Path(name).unlink(missing_ok=True) for name in {private_scripts!r}]"
+    )
+    await run_command(session, shlex.join(["python3", "-c", remove_private]), timeout=20)
     await run_command(
         session, shlex.join(["mkdir", "-p", metadata["remote_output_dir"]]), timeout=20
     )

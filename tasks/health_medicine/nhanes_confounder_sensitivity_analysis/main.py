@@ -184,7 +184,7 @@ Requirements:
    - `n` is the model's participant count and `events` is its count of `ulcer = 1` participants.
    - Leave `or_change_pct_vs_modelA_subset` blank for both Model A rows. For Model B, use `100 * (OR_B / OR_A_subset - 1)`.
    - Set `sddsrvyr_values` to `1`. Metadata must identify `LBXHP1`, its `log1p` transform, the listed NSAID keyword-matching rule, and the unweighted fit without survey weights, PSU, or strata.
-   - Preserve numerical precision when exporting; do not round estimates, intervals, or p-values for display. The numeric tolerance is specified in `output_contract.json`.
+   - Preserve numerical precision when exporting; do not round estimates, intervals, or p-values for display.
 4. Write only the required task outputs under `{self.remote_output_dir}`.
 """
 

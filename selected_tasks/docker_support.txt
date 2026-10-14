@@ -1,4 +1,4 @@
-# Linux (cpu-free-ubuntu) Docker allowlist - 102 tasks.
+# Linux (cpu-free-ubuntu) Docker allowlist - 101 tasks.
 # Blender building, MuseScore transcription, and Ardour migration passed
 # native workflow checks in the published container.
 # The 4 tasks needing nested Docker (openroad_sky130_ibex_pnr_signoff,
@@ -39,7 +39,6 @@ computing_math/particle_filter_nonlinear_tracking
 computing_math/ranking_node_feature_parity_recovery_instance_1
 computing_math/recsys_cold_start_instance_1
 computing_math/synthetic_causal_structure_inference
-education_info/homework_grading_numerical_pdes_instance_02
 education_info/marc_remediation_folio_overlay
 education_info/moodle_gradebook_closeout_reconciliation
 engineering/2d_drawings_to_3d_building_model

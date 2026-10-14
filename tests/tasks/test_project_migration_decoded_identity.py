@@ -14,6 +14,7 @@ from tasks.utils.evaluation import JudgeInfrastructureError
 from tasks.visual_media.project_migration import audio_judge
 from tasks.visual_media.project_migration.replay_audio import replay_evaluation
 
+pytestmark = pytest.mark.usefixtures("judge_api_credentials")
 
 @pytest.fixture
 def float_pair(tmp_path):
@@ -42,6 +43,7 @@ def raw_reply(delivery_rating, native_rating):
     return {
         "choices": [
             {
+                "finish_reason": "stop",
                 "message": {
                     "content": json.dumps(
                         {

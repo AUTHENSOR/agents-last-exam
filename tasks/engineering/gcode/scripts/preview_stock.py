@@ -48,7 +48,7 @@ def main():
             env=environment,
             stdout=log,
             stderr=subprocess.STDOUT,
-            timeout=3600,
+            timeout=6300,
         )
     result_path = output / "replay/result.json"
     if not result_path.exists():
@@ -59,6 +59,7 @@ def main():
         "result": str(result_path),
         "stock": result.get("stock", {}).get("output"),
         "error": result.get("error"),
+        "safety_receipt": result.get("safety_receipt"),
     }
     print(json.dumps(summary, ensure_ascii=False))
     if result["status"] == "native_replay_complete" and process.returncode == 0:

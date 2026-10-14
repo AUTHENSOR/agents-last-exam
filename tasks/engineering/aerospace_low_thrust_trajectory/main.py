@@ -118,11 +118,11 @@ Visible files:
 Required output directory:
 - `{self.solve_output_dir}`
 
-Read the staged problem specification and output contract, then create the required result and trajectory files directly under the output directory. Use `{self.python_entry_file}` for Python/NumPy/SciPy work. If the task-scoped Python runtime is missing, use `{self.uv_entry_file}` and `{self.runtime_manifest_file}` to create or repair it under `{self.task_dir}/.runtime_env`. Do not modify files under `{self.input_dir}`.
+Create the result and trajectory files specified in the staged problem specification and output contract directly under the output directory. Use `{self.python_entry_file}` for Python/NumPy/SciPy work. If the task-scoped Python runtime is missing, use `{self.uv_entry_file}` and `{self.runtime_manifest_file}` to create or repair it under `{self.task_dir}/.runtime_env`. Do not modify files under `{self.input_dir}`.
 
-Save at least 1,000 finite states in each trajectory array. Tier 2 timestamps must be strictly increasing, starting at zero and including the final state. Saved output spacing is independent of the integrator's internal steps: dynamics are checked by propagating the stated gravity-plus-tangential-thrust equations between saved states, not by finite-differencing sparse output.
+Save at least 1,000 finite states in each trajectory array. Tier 2 timestamps must be strictly increasing, starting at zero and including the final state.
 
-Tier 3 uses the full_mee_j2_minimum_fuel_v2 contract in the staged specification. Minimize fuel with throttle/coast over exactly 300 days using full osculating MEE+J2, including the normal-acceleration longitude term and all seven evolving costates. The Tier 3 trajectory now has 15 columns, including lambda_L before lambda_m; its control vectors include throttle. Follow the explicit certification mesh and numerical tolerances in the specification, including independent full-duration Cartesian replay of the saved piecewise-linear controls. Multiple shooting and collocation are permitted. No averaged reference history, fixed thrust fraction, or always-on fuel objective applies.
+Tier 3 uses the full_mee_j2_minimum_fuel_v2 contract in the staged specification. Minimize fuel over exactly 300 days using full osculating MEE+J2 and variable throttle. Submit the 15-column state/costate trajectory and the RTN thrust-fraction vectors defined in the output contract.
 """
 
     def output_file(self, filename: str) -> str:

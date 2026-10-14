@@ -1,4 +1,4 @@
-"""Recompute production scoring from immutable recorded audio responses, without requests."""
+"""Reconstruct historical LLM scoring from recorded responses, without requests."""
 
 import argparse
 import asyncio
@@ -66,7 +66,13 @@ async def replay_evaluation(source: Path, destination: Path) -> dict:
                 }
             )
         body = {**request["parameters"], "messages": messages}
-        request_hash = hashlib.sha256(json.dumps(body, separators=(",", ":")).encode()).hexdigest()
+        if request.get("request_json_keys"):
+            body = {key: body[key] for key in request["request_json_keys"]}
+        request_hash = hashlib.sha256(
+            json.dumps(
+                body, separators=(",", ":"), ensure_ascii=not bool(request.get("request_json_keys"))
+            ).encode()
+        ).hexdigest()
         if (
             request_hash != request["request_sha256"]
             or request_hash != old["request_sha256"]
@@ -74,7 +80,7 @@ async def replay_evaluation(source: Path, destination: Path) -> dict:
             or gains != request["normalization_gains"]
             or gains != old["normalization_gains"]
             or request["rubric"] != audio_judge.RUBRIC
-            or request["parameters"]["model"] != audio_judge.MODEL
+            or request["parameters"]["model"] != provenance["model"]
         ):
             raise JudgeInfrastructureError("Recorded request does not bind the supplied audio")
         responses = sorted(original_receipt.parent.glob(original_receipt.stem + ".response-*.json"))

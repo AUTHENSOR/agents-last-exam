@@ -36,7 +36,7 @@ def evaluator():
     return module
 
 
-def test_runtime_and_card_disclose_identical_existing_criteria():
+def test_runtime_and_card_disclose_reporting_contract_without_grader_slack():
     config = task.SumoUrbanCalibrationConfig()
     prompt = config.task_description
     for actual, portable in (
@@ -48,45 +48,28 @@ def test_runtime_and_card_disclose_identical_existing_criteria():
     card = json.loads((Path(task.__file__).parent / "task_card.json").read_text())
     assert card["taskPrompt"] == prompt
     for clause in (
-        "all 12 gates must pass",
-        "deduplicated union",
-        "at least 3 integers",
-        "3 evaluator-hidden seeds",
-        "completed tripinfo records, not scheduled vehicle entries",
-        "RMSE / mean observed flow <= 12%",
-        "matched detector/15-minute bin",
-        "GEH < 5 on at least 85% of holdout detectors",
-        "combined simulated and observed interval duration",
-        "every declared and hidden seed",
+        "at least 3 integer agent_seeds",
+        "completed tripinfo records",
+        "matched detector/15-minute bins",
         "full 0-3600-second horizon",
-        "RMSE across rerun seeds <= 15%",
-        "max(1% of the rerun mean, 0.5 vehicles/hour)",
-        "max(2% of the rerun mean, 0.5 seconds)",
+        "phase split includes its yellow and all-red duration",
     ):
         assert clause in prompt
+    for private_criterion in ("<= 12%", "<= 15%", "85%", "Gate 10", "max(1%"):
+        assert private_criterion not in prompt
 
 
-def test_dedicated_public_override_has_all_rows_and_matching_contract():
+def test_dedicated_public_override_preserves_deliverables_and_reporting_contract():
     input_dir = os.environ.get("SUMO_PUBLIC_INPUT_DIR")
     if not input_dir:
         pytest.skip("Set SUMO_PUBLIC_INPUT_DIR to validate a staged public-data override")
     prompt = (Path(input_dir) / "task_prompt.md").read_text()
     contract = json.loads((Path(input_dir) / "output_contract.json").read_text())
-    rows = [
-        int(line.split("|")[1].strip())
-        for line in prompt.splitlines()
-        if line.startswith("| ") and line.split("|")[1].strip().isdigit()
-    ]
-    assert rows == list(range(1, 13))
     assert task.PUBLIC_RERUN_CONTRACT in prompt
-    assert contract["evaluator_rerun_contract"] == task.PUBLIC_RERUN_CONTRACT
-    assert contract["scoring_model"] == {
-        "type": "hard_gates",
-        "gate_count": 12,
-        "requires_all_pass": True,
-    }
-    assert "`calibration_report.json` plus 3 evaluator-hidden seeds (deduplicated)" in prompt
-    assert "includes all simulations and gate aggregation" in prompt
+    assert contract["reporting_contract"] == task.PUBLIC_RERUN_CONTRACT
+    assert "evaluator_rerun_contract" not in contract
+    assert "scoring_model" not in contract
+    assert all(name in prompt for name in contract["submission_root_required_files"])
 
 
 @pytest.mark.parametrize("trips,passed", [(94, False), (95, True), (105, True), (106, False)])

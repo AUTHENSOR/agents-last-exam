@@ -23,6 +23,7 @@ from typing import Iterable
 
 from .factory import EnvironmentRouter
 from .experiment_spec import ExperimentSpec, RunUnit, UnitResult
+from .judge_preflight import check_judges
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,8 @@ class Runner:
         if not unit_list:
             logger.warning("Runner.run: no units to execute")
             return []
+
+        await check_judges(unit_list)
 
         self._output_root.mkdir(parents=True, exist_ok=True)
 

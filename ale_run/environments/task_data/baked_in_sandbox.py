@@ -30,7 +30,7 @@ import os
 from typing import Any
 
 from ...base_interface import SandboxHandle, TaskDataSpec
-from . import join, shell_q, task_subdir
+from . import join, prepare_task_subdir, shell_q, task_subdir
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ async def stage_input(
     """Assert input/ is on the sandbox; make output/. Reference stays
     locked (.7z) until ``stage_reference``."""
     _ = source
-    base = task_subdir(sandbox, task_data)
+    base = await prepare_task_subdir(sandbox, task_data)
     input_dir = join(sandbox, base, "input")
     if not await sandbox.exists(input_dir):
         raise RuntimeError(

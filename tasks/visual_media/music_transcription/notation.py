@@ -292,12 +292,16 @@ def parse_musicxml(content, *, tempo_override=None):
                         chord_start = cursor
                         cursor += duration
                     ending = max(ending, cursor)
-                    if event.find("rest") is not None or event.find("cue") is not None:
+                    if event.find("cue") is not None:
+                        continue
+                    staff, voice = event.findtext("staff", "1"), event.findtext("voice", "1")
+                    if event.find("rest") is not None:
+                        for item in event.findall("notations/slur"):
+                            marks.append(Mark("slur", item.get("type", ""), start, staff, item.get("number", "1"), start + duration))
                         continue
                     grace = event.find("grace") is not None
                     if duration == 0 and not grace:
                         raise ValueError("Sounding note has zero duration")
-                    staff, voice = event.findtext("staff", "1"), event.findtext("voice", "1")
                     instrument = event.find("instrument")
                     identity = instrument.get("id") if instrument is not None else default_instrument
                     is_percussion = event.find("unpitched") is not None

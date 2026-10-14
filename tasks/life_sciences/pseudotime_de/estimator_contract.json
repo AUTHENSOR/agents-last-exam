@@ -61,6 +61,5 @@
     "unlisted_arguments": "pinned-package defaults",
     "python_versions": "runtime_env/pyproject.toml",
     "R_versions": "runtime_env/R-versions.json"
-  },
-  "scoring": {"precision_threshold": 0.80, "recall_threshold": 0.80, "combine": "both required; compare unrounded"}
+  }
 }

@@ -163,11 +163,12 @@ def test_public_contract_and_six_script_interface():
         "analyze_part2_results_longitudinal",
         "analyze_results_by_sample_size",
         "fixture_smoke_plan.csv",
-        "1.1e-6",
+        "12 significant digits",
         "Do not",
         "100 replications",
     ):
         assert token in text
+    assert "Summary derivation tolerance" not in text
     for filename in verifier.REQUIRED_SCRIPT_NAMES:
         if (root / "scripts/reference").is_dir():
             assert (root / "scripts/reference" / filename).is_file()

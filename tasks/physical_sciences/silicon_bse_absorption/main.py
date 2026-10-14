@@ -81,7 +81,7 @@ Use the task-local command-line tools staged here:
 ## Numeric Output Format
 - All seven `.dat` files must contain nonempty UTF-8, whitespace-separated tables of finite numeric values. Blank lines and lines starting with `#` after optional whitespace are allowed. Un-commented text headers, including QE `&plot ... /` headers, are not accepted.
 - `bandstructure.dat` must have at least seven columns per data row: (1) numeric field, conventionally spin, ignored by the scorer; (2) band index; (3-5) Cartesian kx, ky, kz; (6) mean-field energy in eV; (7) GW quasiparticle energy in eV. Additional numeric columns are allowed.
-- Include both valence and conduction bands: the scorer treats band indices <= 4 as valence and >= 5 as conduction. It extracts the DFT/GW gaps and band-edge locations from these columns. Native BerkeleyGW `inteqp` band tables follow this layout; a QE `bands.x` header and wrapped energy list do not.
+- Include both valence and conduction bands: use band indices <= 4 as valence and >= 5 as conduction. Native BerkeleyGW `inteqp` band tables follow this layout; a QE `bands.x` header and wrapped energy list do not.
 
 Do not write outputs outside `{self.remote_output_dir}`.
 """

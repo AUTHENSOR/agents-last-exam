@@ -95,8 +95,6 @@ Save the selected symbols to output/de_genes.csv.
 
 Format: UTF-8 CSV with exactly one column `gene` containing HGNC symbols. Optional UTF-8 BOM, standard CSV quoting, LF/CRLF line endings, blank lines, row order, and duplicate symbols do not affect scoring. Header case and surrounding whitespace are ignored; symbol case is significant. Symbols must be nonempty and contain no embedded whitespace, control characters, commas, or quotes. Empty gene fields, malformed CSV/UTF-8, extra columns (including a row index), and other headers are invalid.
 
-Scoring: Let A be the deduplicated submitted symbol set, G the hidden reference symbol set, and TP = |A intersect G|. Precision = TP / |A|; recall = TP / |G|. Score is 1.0 only when BOTH precision >= 0.80 AND recall >= 0.80; otherwise 0.0. Missing, empty, or invalid output scores 0.0. Additional nonreference symbols reduce precision; duplicates cannot improve either metric. Metrics are compared before rounding.
-
 Keep scripts, intermediate exports, and task-local environments under
 output/. Do not modify input files or any non-output task directories.
 Do not ask for confirmation. Execute directly.

@@ -38,11 +38,8 @@ def test_runtime_prompt_and_task_card_agree_on_summary_definition(task_module):
         "one-unit increase in `MM_count`",
         "unpenalized maximum likelihood",
         "model-based (non-robust)",
-        "odds ratio `exp(beta)`",
+        "odds ratio",
         "95% Wald",
-        "exp(beta - z * SE)",
-        "exp(beta + z * SE)",
-        "2 * Phi(-abs(beta / SE))",
         "blank for both Model A rows",
         "100 * (OR_B / OR_A_subset - 1)",
     ):

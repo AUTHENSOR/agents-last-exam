@@ -159,10 +159,7 @@ Each row is one model (Model1 through Model5).
 All numeric values must be finite and between 0 and 1. Column and row order \
 are immaterial to grading; use one row per model and no extra columns. \
 UTF-8 BOM, standard CSV quoting, and equivalent numeric representations are \
-accepted. Score is the fraction of the 20 numeric cells equal to the newly \
-regenerated reference after Python `round(float(value), 2)`. Ranking is \
-reported as a diagnostic, not an additional score multiplier. Save sufficient \
-decimal precision to preserve the calculated values.
+accepted. Save sufficient decimal precision to preserve the calculated values.
 
 ## Input Data
 - `{self.input_dir}/Ensembles/` -- 5 models (Model1-5), each with protein \

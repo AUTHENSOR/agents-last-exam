@@ -49,13 +49,15 @@ across all 55 subdomains and reference integrations for several agent harnesses.
 
 ## Quick start
 
-**ALE v1.1 updates 62 tasks and retires one, leaving 151 tasks.** The updates
-cover instructions (54), verification (48), environment (32), and data (30);
-categories overlap. Six workflows move to open-source Linux tools, three also
-supported in Docker. Use matching task code, images, and data from the
-[asset manifest](releases/v1.1/assets.json). The compact
+**ALE v1.1 selects 150 tasks after two retirements.** The upgrade scope
+marks 71 active tasks for rerun and 79 for retention. Updates cover instructions
+(58), verification (56), environment (37), and data (30); categories overlap.
+Six workflows move to open-source Linux tools, three also supported in Docker.
+Task designs and source are frozen. Use the matching images and data pinned in
+the [asset manifest](releases/v1.1/assets.json). The compact
 [run and upgrade guide](docs/releases/v1.1.md) covers the changes, supported
-environments, setup, and existing logs.
+environments, setup, and existing logs; the [task review](docs/releases/v1.1-task-review.md)
+records decisions, validation scope and limits for all 71 modified tasks.
 
 ```bash
 git clone git@github.com:rdi-berkeley/agents-last-exam.git
@@ -167,10 +169,10 @@ Set `tasks:` in your experiment to a compatible list:
 
 | List | Tasks | Coverage |
 |---|---:|---|
-| `selected_tasks/full.txt` | 151 | Complete benchmark; difficulty lists under `selected_tasks/full/*.txt` |
-| `selected_tasks/cpu.txt` | 146 | Ubuntu and Windows CPU tasks |
-| `selected_tasks/ale_cli.txt` | 111 | Linux tasks, including desktop workflows |
-| `selected_tasks/docker_support.txt` | 102 | Supported local-container subset |
+| `selected_tasks/full.txt` | 150 | Complete benchmark; difficulty lists under `selected_tasks/full/*.txt` |
+| `selected_tasks/cpu.txt` | 145 | Ubuntu and Windows CPU tasks |
+| `selected_tasks/ale_cli.txt` | 110 | Linux tasks, including desktop workflows |
+| `selected_tasks/docker_support.txt` | 101 | Supported local-container subset |
 
 Environment profiles default to `output_path: null`, keeping bulk task output
 in the sandbox while collecting metadata, trajectories, evaluations, and

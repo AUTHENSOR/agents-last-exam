@@ -3,6 +3,7 @@
 from collections import Counter, defaultdict, deque
 import hashlib
 from pathlib import Path
+import re
 import xml.etree.ElementTree as ET
 
 import mido
@@ -69,6 +70,81 @@ def control_curves(events):
     return curves, ordered
 
 
+def initial_midi_setters(tree, route, project):
+    playlist = tree.find(f'Playlists/Playlist[@id="{route.get("midi-playlist")}"]')
+    if playlist is None:
+        return {}
+    sources = {source.get("id"): source for source in tree.findall("Sources/Source")}
+    timeline = []
+    try:
+        for region_index, region in enumerate(playlist.findall("Region")):
+            if region.get("muted") == "1":
+                continue
+            start = float(region.attrib["start-beats"]) * 1920
+            end = start + float(region.attrib["length-beats"]) * 1920
+            position = float(region.attrib["beat"]) * 1920
+            events = midi_events(source_path(project, sources[region.get("source-0")]))
+            for order, (tick, message) in enumerate(events):
+                if start <= tick < end:
+                    timeline.append((position + tick - start, region_index, order, message))
+    except (KeyError, ValueError, OSError, EOFError):
+        return {}
+    first_notes = {}
+    for tick, region_index, order, message in sorted(timeline, key=lambda entry: entry[:3]):
+        if message["type"] == "note_on" and message["velocity"]:
+            first_notes.setdefault(message["channel"], (tick, region_index, order))
+    setters = defaultdict(list)
+    for tick, region_index, order, message in timeline:
+        if message["type"] != "control_change" or message["control"] not in SIMPLE_SETTERS:
+            continue
+        note = first_notes.get(message["channel"])
+        if note is not None and (
+            tick < note[0] or (tick == note[0] and region_index == note[1] and order < note[2])
+        ):
+            setters[(message["channel"], message["control"])].append(
+                (tick, region_index, order, message["value"])
+            )
+    result = {}
+    for key, points in setters.items():
+        last_tick = max(point[0] for point in points)
+        last = [point for point in points if point[0] == last_tick]
+        if len({point[1] for point in last}) == 1:
+            result[key] = max(last, key=lambda point: point[2])[3]
+    return result
+
+
+def ordered_controls_preserved(original_events, events):
+    original = control_curves(original_events)[1]
+    first_notes = {}
+    for index, (tick, message) in enumerate(events):
+        if message["type"] == "note_on" and message["velocity"]:
+            first_notes.setdefault(message["channel"], (tick, index))
+    consumed = 0
+    maximum_offset = 0
+    initializers = []
+    for index, (tick, message) in enumerate(events):
+        if message["type"] in ("note_on", "note_off") or (
+            message["type"] == "control_change" and message["control"] in SIMPLE_SETTERS
+        ):
+            continue
+        if (
+            consumed < len(original)
+            and message == original[consumed][1]
+            and abs(tick - original[consumed][0]) <= CONTROLLER_TICKS
+        ):
+            maximum_offset = max(maximum_offset, abs(tick - original[consumed][0]))
+            consumed += 1
+            continue
+        first_note = first_notes.get(message.get("channel"))
+        patch_initializer = message["type"] == "program_change" or (
+            message["type"] == "control_change" and message["control"] in (0, 32)
+        )
+        if not patch_initializer or first_note is None or (tick, index) >= first_note:
+            return False, maximum_offset, initializers
+        initializers.append((tick, message))
+    return consumed == len(original), maximum_offset, initializers
+
+
 def compare_project(baseline_path: Path, candidate_path: Path) -> dict:
     baseline = ET.parse(baseline_path).getroot()
     try:
@@ -77,6 +153,7 @@ def compare_project(baseline_path: Path, candidate_path: Path) -> dict:
         return {"passed": False, "failures": [str(exc)], "notes": 0}
     failures = []
     observations = []
+    instrument_initializers = []
     maximum_offset = 0
     totals = Counter()
     for tag in ("Tempo", "Meter"):
@@ -101,6 +178,20 @@ def compare_project(baseline_path: Path, candidate_path: Path) -> dict:
             expression = f'IO[@direction="{direction}"]/Port/Connection'
             before = sorted(node.get("other") for node in original.findall(expression))
             after = sorted(node.get("other") for node in actual.findall(expression))
+            original_info = original.find("PresentationInfo")
+            actual_info = actual.find("PresentationInfo")
+            if direction == "Output" and all(
+                info is not None and "MasterOut" in info.get("flags", "").split(",")
+                for info in (original_info, actual_info)
+            ):
+                before = [
+                    target for target in before
+                    if not re.fullmatch(r"system:playback_[1-9][0-9]*", target or "")
+                ]
+                after = [
+                    target for target in after
+                    if not re.fullmatch(r"system:playback_[1-9][0-9]*", target or "")
+                ]
             if before != after:
                 failures.append(f"{name}: changed {direction} routing")
         for node in original.findall("Controllable"):
@@ -109,6 +200,15 @@ def compare_project(baseline_path: Path, candidate_path: Path) -> dict:
                 continue
             target = actual.find(f'Controllable[@name="{control}"]')
             if target is None or float(node.get("value")) != float(target.get("value")):
+                if target is not None and control.startswith("midicc-"):
+                    try:
+                        key = tuple(map(int, control.split("-")[1:]))
+                        before = initial_midi_setters(baseline, original, baseline_path.parent)
+                        after = initial_midi_setters(candidate, actual, candidate_path.parent)
+                        if key in before and before[key] == after.get(key):
+                            continue
+                    except ValueError:
+                        pass
                 failures.append(f"{name}: changed {control} initial state")
         for node in original.findall(".//AutomationList"):
             if node.get("state") in (None, "Off"):
@@ -166,20 +266,19 @@ def compare_project(baseline_path: Path, candidate_path: Path) -> dict:
                     failures.append(
                         f"{name}: notes differ (missing {(original_notes - notes).total()}, extra {(notes - original_notes).total()})"
                     )
-                old_curves, old_ordered = control_curves(original_events)
-                curves, ordered = control_curves(events)
-                if [message for _, message in old_ordered] != [message for _, message in ordered]:
+                old_curves, _ = control_curves(original_events)
+                curves, _ = control_curves(events)
+                preserved, offset, initializers = ordered_controls_preserved(original_events, events)
+                if not preserved:
                     failures.append(
                         f"{name}: changed ordered bank/program, switch or stateful messages"
                     )
                 else:
-                    offset = max(
-                        (abs(left[0] - right[0]) for left, right in zip(old_ordered, ordered)),
-                        default=0,
-                    )
                     maximum_offset = max(maximum_offset, offset)
                     if offset > CONTROLLER_TICKS:
                         failures.append(f"{name}: ordered message displaced {offset}/1920 beats")
+                    if initializers:
+                        instrument_initializers.append({"route": name, "events": initializers})
                 if old_curves.keys() != curves.keys():
                     failures.append(f"{name}: changed controller inventory")
                 for key, points in old_curves.items():
@@ -217,6 +316,7 @@ def compare_project(baseline_path: Path, candidate_path: Path) -> dict:
         **totals,
         "routes": len(routes),
         "maximum_controller_offset_ticks": maximum_offset,
+        "instrument_initializers": instrument_initializers,
         "unresolved_active_plugins": unresolved,
         "candidate_sha256": hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
     }

@@ -22,18 +22,14 @@ they do not become candidate NO answers or scores of zero.
 
 ## Configuration
 
-The scorer reads `secret/.env` from the repository and overlays the current
-environment without changing global environment variables. Resolution order:
+The scorer uses the shared judge in `tasks/utils/evaluation.py`. Set
+`JUDGE_BASE_URL`, `JUDGE_API_KEY`, and `JUDGE_MODEL` in the evaluator-only
+`secret/eval_time/openai.env`; file values take precedence over the environment
+without modifying it. `--model` is an explicit model override. Solver credentials
+and endpoints are not used. Keys are excluded from reports.
 
-- Model: explicit `model`/`--model`, `D2T3B_JUDGE_MODEL`, `LLM_JUDGE_MODEL`,
-  then `gpt-6-astra`.
-- Endpoint: `D2T3B_JUDGE_BASE_URL`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`,
-  then `https://api.openai.com/v1`.
-- Key: `D2T3B_JUDGE_API_KEY`, then `OPENAI_API_KEY`.
-
-The API route is `/chat/completions`, with `max_completion_tokens=2048` and no
-temperature override. Task-specific settings permit a paired endpoint/key
-override without changing other tasks. Keys are excluded from reports.
+The API route is `/chat/completions`, with a completion budget of at least 2048
+tokens and no temperature override. Shared reasoning settings can raise the budget.
 
 ## Evidence
 

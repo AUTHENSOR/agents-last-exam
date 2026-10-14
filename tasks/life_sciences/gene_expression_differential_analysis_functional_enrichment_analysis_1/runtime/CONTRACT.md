@@ -76,7 +76,7 @@ within the retained family. Missing adjusted probabilities remain missing.
 The estimator does not sample or bootstrap, so no RNG seed is required.
 Limit inference to at most four processes and set `OPENBLAS_NUM_THREADS=1`,
 `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`. CPU dispatch can cause small floating
-point differences; no score epsilon or scoring tolerance is changed for this.
+point differences.
 
 ## Output and Enrichment
 

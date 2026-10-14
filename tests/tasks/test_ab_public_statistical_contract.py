@@ -32,7 +32,7 @@ def frozen_counts_raw(tmp_path: Path) -> Path:
     return raw
 
 
-def test_runtime_and_card_declare_the_same_statistical_formulas() -> None:
+def test_runtime_and_card_declare_the_same_statistical_contract() -> None:
     config = task.DigitalMarketingABTestConfig()
     runtime = config.task_description.replace(config.remote_output_dir, "base/output").replace(
         config.input_dir, "base/input"
@@ -44,23 +44,20 @@ def test_runtime_and_card_declare_the_same_statistical_formulas() -> None:
         "**full** `experiment_results_raw.csv` population",
         "equal 1:1 allocation using Pearson chi-square with 1 degree of freedom",
         "`srm_pvalue > 0.01`",
-        "pooled two-proportion z test without continuity correction",
-        "p_c=x_c/n_c, p_t=x_t/n_t, d=p_t-p_c, and p_pool=(x_c+x_t)/(n_c+n_t)",
-        "`z_statistic=d/sqrt(p_pool*(1-p_pool)*(1/n_c+1/n_t))`",
-        "`p_value_raw=2*(1-Phi(abs(z_statistic)))`",
+        "pooled, two-sided two-proportion z test without continuity correction",
         "`significant_at_05` means p < 0.05",
-        "unpooled Wald standard error",
-        "`d +/- Phi_inverse(0.975)*sqrt(p_c*(1-p_c)/n_c+p_t*(1-p_t)/n_t)`",
-        "`bh_threshold=bh_rank/3*0.05`",
-        "largest rank k with p_(k) <= k/3*0.05. Mark all ranks <= k significant",
+        "unpooled Wald 95% confidence intervals",
+        "Benjamini-Hochberg step-up correction to the three secondary metrics",
+        "at FDR 0.05",
         "equal 1:1 allocation, two-sided alpha=0.05, 80% power",
         "arithmetic mean of historical `open_rate`",
-        "p2=p1+0.03 and p_bar=(p1+p2)/2",
-        "`ceil((Phi_inverse(0.975)*sqrt(2*p_bar*(1-p_bar)) + "
-        "Phi_inverse(0.80)*sqrt(p1*(1-p1)+p2*(1-p2)))**2/0.03**2)`",
-        "Cohen's h normal-power alternative with the same inputs",
+        "minimum detectable effect is an absolute increase of 0.03",
+        "Cohen's h normal-power analysis with the same inputs",
+        "Recommend **ship** only when the primary metric is significant at 0.05",
+        "treatment unsubscribe lift is at most 0.5 percentage points; otherwise recommend **hold**",
     ):
         assert clause in normalized
+    assert "Phi_inverse" not in normalized
 
 
 @pytest.mark.parametrize(
@@ -142,6 +139,32 @@ def test_bh_step_up_preserves_frozen_secondary_outcomes(frozen_counts_raw: Path)
             "bh_threshold": rank / 3 * 0.05,
             "bh_significant": rank <= largest_rank,
         }
+
+
+@pytest.mark.parametrize(
+    "p_values,decisions",
+    [
+        ([0.02, 0.03, 0.9], [True, True, False]),
+        ([0.02, 0.04, 0.049], [True, True, True]),
+        ([0.02, 0.04, 0.9], [False, False, False]),
+        ([0.01, 0.04, 0.9], [True, False, False]),
+        ([0.9, 0.03, 0.02], [False, True, True]),
+        ([0.03, 0.03, 0.9], [True, True, False]),
+        ([0.05, 0.05, 0.05], [True, True, True]),
+        ([0.051, 0.051, 0.051], [False, False, False]),
+    ],
+)
+def test_bh_step_up_rejects_all_hypotheses_through_last_passing_rank(
+    frozen_counts_raw: Path, p_values: list[float], decisions: list[bool]
+) -> None:
+    corrected = verifier.bh_correct(dict(zip(verifier.SECONDARY_METRICS, p_values)))
+    assert [corrected[metric]["bh_significant"] for metric in verifier.SECONDARY_METRICS] == decisions
+    expected = verifier.metric_stats(frozen_counts_raw)["clicked_rate"]
+    row = {key: str(value) for key, value in expected.items()}
+    row.update({key: str(value) for key, value in corrected["clicked_rate"].items()})
+    assert verifier.validate_metric_row("clicked_rate", row, expected, corrected)
+    row["bh_significant"] = str(not decisions[0])
+    assert not verifier.validate_metric_row("clicked_rate", row, expected, corrected)
 
 
 @pytest.mark.parametrize(

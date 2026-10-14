@@ -101,18 +101,18 @@ baseline, model-training split, tariff calculations, output schema, and the
 closed-loop plant update. Do not modify `benchmark_driver.py` or
 `canonical_baseline.csv`; implement the documented functions in `controller.py`.
 
-1. Inspect `controller.py` and `task_spec.json`.
-2. Implement `fit_model`, `predict_next_temperature`, and `select_action` in
+- Implement `fit_model`, `predict_next_temperature`, and `select_action` in
    `controller.py`. The model returned by `fit_model` must be JSON-serializable,
    predictions must be finite temperatures, and actions must be exactly one of
    0.0, 0.1, or 0.3 kg/s.
-3. Build two controller policies: one for energy-cost saving and one for demand
+- Build two controller policies: one for energy-cost saving and one for demand
    response / on-peak load reduction.
-4. Run `benchmark_driver.py --controller controller.py --baseline
-   canonical_baseline.csv --output-dir {self.remote_output_dir}`. It fits on
-   July 1-20, validates predictions on July 21-25, and evaluates both policies
-   on the deterministic 28-day trace, reporting July 28 metrics.
-5. Review and report July 28 performance: cooling energy, electric energy, tariff cost,
+- From the input directory, run `python benchmark_driver.py --controller
+  controller.py --baseline canonical_baseline.csv --output-dir
+  {self.remote_output_dir}`. Training uses July 1-20, prediction validation
+  uses July 21-25, and both policies run on the deterministic 28-day trace,
+  reporting July 28 metrics.
+- Report July 28 performance: cooling energy, electric energy, tariff cost,
    peak cooling load, peak-period average load, comfort degree-hours, load
    shifting behavior, and RC-model calibration quality.
 

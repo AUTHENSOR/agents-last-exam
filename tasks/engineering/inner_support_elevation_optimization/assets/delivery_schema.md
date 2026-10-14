@@ -1,85 +1,40 @@
-# Deterministic delivery and evaluation contract
+# Delivery schema
 
-Full five-case native entrypoint validation remains pending. No LLM or evaluator
-API credential is used. Public model checks are in model_definition.md.
-Passing preflight permits independent replay, not a physical certificate.
-All numerical and delivery credit requires passing the public model checks
-and successful independent native replay of all five cases.
+Required root files are `answer.json`, `case_summary.csv`,
+`pos_0m_output_view.png`, `pos_2m_output_view.png`, `pos_4m_output_view.png`,
+`settlement_vs_support_position.png`, `lateral_disp_vs_support_position.png`,
+and `support_position_engineering_memo.md`.
 
-All original root deliverables remain required: answer.json, case_summary.csv,
-three pos_0m/pos_2m/pos_4m output-view PNGs, the settlement and lateral-displacement
-comparison PNGs, and support_position_engineering_memo.md. The editable
-model_family_support_position directory includes native inputs, logs, saved
-results and raw DBC/CX monitor tables for all five cases. Use native_interface.md
-for filenames and commands. Missing a root deliverable or raw monitor table
-receives zero; native execution/runtime failures remain evaluator-unavailable.
+The editable `model_family_support_position/` directory contains native inputs,
+logs, saved results and raw DBC/CX monitor tables for all five cases. Native
+file formats are specified in `native_interface.md`.
 
-answer.json contains the fourteen original fields with finite JSON numbers and
-positive response magnitudes. case_summary.csv columns are case_label,
-support_position_m,max_settlement_mm,max_disp_mm, with one row per pos_0m..pos_4m.
-Order is immaterial; duplicates, nonfinite values and CSV/JSON disagreement fail.
+`answer.json` uses the fourteen original template fields with finite JSON
+numbers and positive response magnitudes. `case_summary.csv` has columns
+`case_label,support_position_m,max_settlement_mm,max_disp_mm`, with one row per
+`pos_0m` through `pos_4m`. Order is immaterial. JSON, CSV, raw tables and native
+results must represent the same calculations.
 
-The numerical half is unchanged: thirteen fields at 0.0357 each and
-best_support_position_for_minimum_disp_m at 0.0359. Independently replayed
-responses use max(0.30 mm, 5%) tolerance. Signed percentages are
-(S0-S2)/S0*100 and (S4-S2)/S2*100, rounded to one decimal place, with
-max(0.30 percentage point, 8%) tolerance. Reported percentage arithmetic must
-also agree within 0.1 point with the reported responses. Minima are tested
-positions with the smallest native response; exact native ties are allowed.
-There is no preferred response curve or invariant optimum across models.
+Report the percentage reduction from position 0 to 2 relative to position 0,
+and the percentage increase from position 2 to 4 relative to position 2,
+each rounded to one decimal place. Report a tested position attaining each
+minimum; an exact tie permits either minimizing position.
 
-The delivery half retains schema 0.08, completeness 0.12, native project 0.06,
-summary 0.08, images 0.10 and memo 0.06. Native project/summary credit depends
-on independent native fields and physical DBC/CX table agreement. Duplicate
-shell/crown boundary rows may retain either valid trace; the reported profile
-must still retain the native maximum within response tolerance.
-Native-result disagreement loses the 0.06 native-project component; raw-table
-disagreement or CSV/JSON disagreement loses the 0.08 summary component.
-These are partial-credit checks after replay, distinct from the zero-score
-missing-deliverable rule above.
+The five images must be PNGs of at least 320x240 pixels, showing labeled native
+output views and the two support-position comparisons.
 
-## Explicit presentation checks
+The memo must explain the engineering recommendation and contain exactly one
+fenced JSON block tagged `support-decision`, with these fields:
 
-Each of the five PNGs earns 0.02 when it decodes as PNG, is at least 320x240
-pixels, and at least one RGB channel has a decoded range of 16 or more.
-These are deliberately limited presentation checks. They do not certify
-image semantics, readable labels or physical accuracy. Native files and numeric
-tables supply that authority. Provide informative labeled views and plots.
+- `reduction_0m_to_2m_percent`, `increase_2m_to_4m_percent`: finite numbers using
+  the percentage definitions above;
+- `best_support_position_for_minimum_settlement_m`,
+  `best_support_position_for_minimum_disp_m`: integer minimizing positions;
+- `recommended_position_m`: integer 0 through 4;
+- `recommendation_reason`, `assumptions`, `limitations`, `installation_tradeoff`,
+  `rerun_instructions`: descriptive strings of at least 40 characters each after
+  trimming surrounding whitespace. Explain the computed comparison, adopted
+  assumptions, limitations, installation implications and executable native
+  rerun/inspection instructions.
 
-The memo may include arbitrary narrative, but must contain exactly one fenced
-JSON block tagged support-decision. The following six checks each earn 0.01:
-
-1. reduction_0m_to_2m_percent and increase_2m_to_4m_percent are finite numbers
-   agreeing with native percentages within the numerical tolerance above.
-2. best_support_position_for_minimum_settlement_m and
-   best_support_position_for_minimum_disp_m are integer native minimizers.
-3. recommended_position_m is an integer 0..4 and recommendation_reason is a
-   string of at least 40 characters after stripping leading/trailing whitespace.
-   A tradeoff recommendation need not equal either single-objective minimum.
-4. assumptions is a string of at least 40 characters after stripping.
-5. limitations is a string of at least 40 characters after stripping.
-6. installation_tradeoff and rerun_instructions are each strings of at least
-   40 characters after stripping. Give the case-dependent installation order
-   and actual native rerun/inspection commands.
-
-Example structure (replace every value with your own computed result/text):
-
-```support-decision
-{
-  "reduction_0m_to_2m_percent": 0.0,
-  "increase_2m_to_4m_percent": 0.0,
-  "best_support_position_for_minimum_settlement_m": 0,
-  "best_support_position_for_minimum_disp_m": 0,
-  "recommended_position_m": 0,
-  "recommendation_reason": "Explain the computed comparison and your engineering recommendation.",
-  "assumptions": "Describe rock stiffness, sections, groundwater, interfaces and other model choices.",
-  "limitations": "Explain model dependence, sampling, mesh and boundary uncertainty without claiming universal accuracy.",
-  "installation_tradeoff": "Explain excavation access and the time at which each alternative support becomes active.",
-  "rerun_instructions": "Give executable native model commands and identify the saved result and monitoring files."
-}
-```
-
-Invalid JSON or an absent/duplicate block earns no memo credit. Fields earn
-credit independently. Prose length is a coverage check, not a claim that a
-semantic engineering assessment was performed. No extra simulations, force
-accuracy certificate or independent proof assignment is required.
+A tradeoff recommendation may differ from either single-objective minimum.

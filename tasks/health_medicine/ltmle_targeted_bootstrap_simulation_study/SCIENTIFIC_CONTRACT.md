@@ -1,9 +1,7 @@
 # LTMLE Cumulative Targeting Contract v2 (2026-09-10)
 
-This is a new reproducible scientific benchmark, not a reconstruction of the
-unknown April configuration. `study_plan_public.csv` and its JSON mirror are
-the current run settings. Legacy numbers are preserved administratively but
-are not grading targets. The authentic DGP and bundled package are unchanged.
+`study_plan_public.csv` and its JSON mirror specify the run settings for
+the supplied DGP and bundled package.
 
 ## Scientific design
 
@@ -22,7 +20,6 @@ required method labels have these definitions:
 1. **Standard LMTP Contrast (EIF)**: fit each arm with the bundled
    `lmtp_tmle(..., boot=FALSE)` and use the additive paired contrast. Point is
    target theta minus control theta; SE is `sd(EIF_target - EIF_control)/sqrt(n)`.
-   Summing the two marginal variances is incorrect.
 2. **Full-Data Targeting Contrast (EIF)**: for each policy create a fresh
    `lmtp_task`, fit density ratios using `cf_r` first, then initial regressions
    using `cf_sub(task, "tmp_lmtp_scaled_outcome", ...)`. These are held-out
@@ -56,10 +53,8 @@ Qstar[,tau+1] to the observed binary Y. For t=tau,...,1:
   endpoint if its score is <=0, upper if its score is >=0. If total H is zero,
   epsilon=0, retaining initial predictions for that step. These are explicit
   support/boundary conventions, not discarded simulations.
-- Apply the same epsilon to initial natural and shifted logits. **Do not
-  floor/ceiling the targeted probabilities afterward**; keeping a 1e-5 floor
-  would prevent solving a zero-outcome score. This numerical refinement is
-  intentional, unlike the recovered author's unchecked IRLS plus final bound.
+- Apply the same epsilon to initial natural and shifted logits. The targeted
+  probabilities are the logistic predictions after this update, without additional clipping.
 - Abort nonfinite fits and record the error; never drop, retry different seeds,
   or replace a failed bootstrap draw with an untargeted estimate. Preserve
   all attempted draws. Record boundary/zero-weight counts and numerical warnings
@@ -69,8 +64,7 @@ Qstar[,tau+1] to the observed binary Y. For t=tau,...,1:
 Arm point is mean(Qstar_shifted[,1]). Its uncentered EIF is
 `Qstar_shifted[i,1] + sum_t H[i,t]*(Qstar_shifted[i,t+1]-Qstar_natural[i,t])`.
 Use the paired arm EIF difference with sample variance divided by n.
-The bundled `boot=TRUE` path uses raw ratios for targeting and is **not** this
-method. Implement the cumulative targeting step in your six scripts without
+Implement the cumulative targeting step in your six scripts without
 changing the package namespace or public inputs.
 
 ## Plan and RNG protocol
@@ -158,13 +152,3 @@ method,scenario,bias,empirical_se,estimated_se,se_ratio,coverage,ci_width
 Per method/scenario use mean(estimate-truth), sample SD(estimate), mean(SE),
 mean(SE)/sample SD(estimate) (0 if denominator=0), inclusive coverage, and mean
 interval width. Round only final metrics to six decimals. No `na.rm=TRUE`.
-Summary derivation tolerance is 1.1e-6; shared raw point/SE tolerance is 1e-8;
-Wald endpoint tolerance is 1e-7. Numerical-reference absolute tolerances are
-bias .03, empirical SE .05, estimated SE .05, ratio .2, coverage .12, width .12.
-These do not relax mathematical identities or permit copying public answers.
-
-The deterministic hidden rerun also compares each replication's estimate and
-SE to its independently computed reference within 1e-5, and each CI endpoint
-within 1e-4. This catches covariance omission or wrong targeting weights even
-when aggregate summary differences happen to be small. The runtime, seed
-schedule and numerical specification above apply equally to this check.

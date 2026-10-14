@@ -50,14 +50,13 @@ VARIANT_NAME = "base"
 EVAL_TMP_DIR = f"/tmp/agenthle_eval/{TASK_NAME}"
 SCRIPTS_DIR = Path(__file__).resolve().parent / "scripts"
 PUBLIC_RERUN_CONTRACT = """\
-Evaluator rerun contract (all 12 gates must pass):
-- The evaluator runs the deduplicated union of the declared `agent_seeds` (at least 3 integers) and 3 evaluator-hidden seeds over simulation seconds 0-3600. Gates 5-8 use all rerun seeds; report-consistency Gates 10-11 use only the declared seeds.
-- Gate 5 compares the mean number of completed tripinfo records, not scheduled vehicle entries, against the AM-peak control total within +/-5%.
-- Gate 6 requires holdout-detector flow RMSE / mean observed flow <= 12%. Counts are averaged over rerun seeds for each matched detector/15-minute bin, scaled to vehicles/hour, then pooled for RMSE.
-- Gate 8 requires GEH < 5 on at least 85% of holdout detectors. It aggregates each detector's counts over the hour and averages simulated totals over seeds. The existing scorer divides both totals by the combined simulated and observed interval duration (2 hours for complete one-hour series) before computing GEH.
-- Gate 9 requires every declared and hidden seed to complete without a simulation error.
-- Corridor travel time is the sum of edgeData `traveltime` values over the corridor edges, aggregated over the full 0-3600-second horizon. Gate 7 requires RMSE across rerun seeds <= 15% of the observed mean for each corridor.
-- Gate 10 compares each reported public-detector mean with its declared-seed rerun mean using an absolute tolerance of max(1% of the rerun mean, 0.5 vehicles/hour). Gate 11 compares each reported corridor mean with its declared-seed rerun mean using max(2% of the rerun mean, 0.5 seconds).
+Simulation and reporting contract:
+- Simulate seconds 0-3600. Report at least 3 integer agent_seeds. The submitted configuration must also run with other seeds.
+- Report the mean number of completed tripinfo records as the AM-peak simulated trip total.
+- Detector flows use matched detector/15-minute bins, expressed in vehicles/hour; reported means and standard deviations use the declared seeds.
+- Corridor travel time is the sum of edgeData traveltime values over its edges for the full 0-3600-second horizon. Report corridor statistics over the declared seeds.
+- Signal cycle is the sum of all phase durations. Each phase split includes its yellow and all-red duration.
+- Calibrate demand, detector flows, corridor travel times and signal timing against the supplied observations. All reported results must be reproducible from the submitted configuration.
 """
 
 if __name__ not in sys.modules:

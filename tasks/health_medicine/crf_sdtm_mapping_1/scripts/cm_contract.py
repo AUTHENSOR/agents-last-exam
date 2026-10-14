@@ -58,12 +58,10 @@ CM_RULES = {
     "prose": (
         "mapping_rule and notes must be nonempty and field-specific. mapping_rule must "
         "name the exact target variable as a whole word; notes must cite the source "
-        "form/page or XML evidence. Their wording is not compared to hidden sentences. "
-        "The deterministic prose checks enforce nonempty text and the target token, "
-        "not unrestricted natural-language equivalence."
+        "form/page or XML evidence."
     ),
     "comparison": (
-        "The original binary grading is unchanged: all required mappings and structured "
+        "All required mappings and structured "
         "values must be correct, with no missing, extra or duplicate mappings. Keep the "
         "exact eleven-column header/order; standard CSV quoting, UTF-8 BOM and row order "
         "are accepted. Dataset names, target names and YES/NO flags are case-sensitive. "

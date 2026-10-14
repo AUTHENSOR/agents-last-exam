@@ -25,6 +25,7 @@ dependencies = [
     "scikit-learn>=1.8.0",
     "scipy>=1.17.1",
     "sgfmill>=1.1.1",
+    "stim==1.15.0",
     "torch>=2.11.0",
 ]
 
