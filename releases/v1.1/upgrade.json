@@ -2,13 +2,13 @@
   "schema_version": 1,
   "release": "v1.1",
   "baseline_commit": "2d4d2205c255e2f7dcf568baa1f0c108dfaa3d73",
-  "release_commit": "a057e47acefc2db081a107b151983da211ee471f",
+  "release_commit": "1ba385afe5df7f30e0ae47c80b52f2da0b493645",
   "baseline_policy": "Task repairs, data updates and open-source conversions since v1 snapshot 2d4d220. Use --from-commit for older snapshots. Retention records reuse eligibility, not original run provenance.",
   "hash_policy": "Complete frozen task folders, including task-card edits, executable modes and symlink targets, hashed by ale_run.tasks.revision.task_revision. Generated caches are excluded. Nonrelease evidence is preserved outside task folders; required untracked source files belong to the frozen publication set. Public checkout and runtime folders must have identical task hashes.",
   "revision_status": "frozen",
   "scope_reconciled_date": "2026-10-12",
   "scope_reconciled_timezone": "America/Los_Angeles",
-  "revision_note": "All 150 active task revisions are frozen against source_map_identifier. Task designs and behavior are unchanged by packaging. release_commit remains historical until the parent records the source publication commit. Data/image publication and final validation are separate and are not certified by this source freeze.",
+  "revision_note": "All 150 active task revisions match the frozen source_map_identifier and release_commit. Matching data and image identities are recorded separately in releases/v1.1/assets.json.",
   "tasks": {
     "agriculture_env/crop_rotation_d02": {
       "action": "retain",
@@ -1258,5 +1258,5 @@
   "counting_policy": "Distinct selected benchmark tasks relative to v1 source and distributed inputs/references. Categories overlap. Excludes retired tasks, unselected variants, inactive metadata, packaging-only cleanup and shared framework changes.",
   "source_map_identifier": "sha256:de99aa42b7af16eb33546a6e21a98d50c264dd8ccf11e78837543c45ad42d2f2",
   "frozen_at": "2026-10-14T07:25:43.680204+00:00",
-  "release_commit_status": "parent-commit-pending"
+  "release_commit_status": "frozen-source-committed"
 }

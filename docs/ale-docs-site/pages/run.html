@@ -55,6 +55,14 @@ max_attempts: 3</code></pre>
       and counts the initial run within that invocation. Every attempt keeps
       its own run directory.
     </p>
+    <p>
+      Known limitation: excavation-support and UV-reproduction evaluation
+      writes local review files inside the task folders, changing their hashes.
+      After evaluation finishes, preserve and move
+      <code>tasks/engineering/inner_support_elevation_optimization/scripts/evidence/task-source-reviews/</code>
+      and <code>tasks/visual_media/uv_reproduction/.tmp_soft_eval/</code> outside
+      the checkout before resuming. These generated files are not frozen task source.
+    </p>
     <h3>Disable resume for one invocation</h3>
     <pre><code>uv run python -m ale_run run my_experiment.yaml --disable-resume</code></pre>
     <p>
