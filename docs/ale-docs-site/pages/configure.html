@@ -20,9 +20,11 @@
 
     <h2 id="v1-1">Use the v1.1 release</h2>
     <p>
-      ALE v1.1 selects <strong>150 tasks</strong> after two retirements.
-      The upgrade scope marks <strong>71 active tasks</strong> for rerun and
-      79 for retention. Six formerly
+      ALE v1.1 selects <strong>122 active tasks</strong> after 30 retirements.
+      The upgrade scope marks <strong>56 active tasks</strong> for rerun and
+      66 for retention. To preserve the original requirements, follow
+      <a href="https://github.com/rdi-berkeley/agents-last-exam/blob/main/docs/releases/v1.md"><strong>Run original v1</strong></a>
+      with v1 code, legacy images and fresh logs, not v1.1 assets or results. Six formerly
       licensed tasks keep their IDs and business goals using open-source Linux
       workflows: Blender building reconstruction, FreeCAD Road alignment,
       FreeCAD CAM with LinuxCNC and CAMotics, Kratos support analysis, MuseScore
@@ -31,23 +33,27 @@
       open-source replacement at the original scope.
       <code>education_info/homework_grading_numerical_pdes_instance_02</code>
       is retired because feedback verification was overly tied to fixed wording.
+      The <a href="https://github.com/rdi-berkeley/agents-last-exam/blob/main/docs/releases/v1.1-task-review.md#retired-tasks">retirement list</a>
+      includes these two and 28 further tasks. Retirement narrows release scope;
+      it does not imply that every retired task is defective.
     </p>
     <p>
-      The standalone task-data release covers the 150 active tasks. VM images
-      retain an inactive PDE data payload, but the retired task has no source
-      implementation or selection-list entry and does not count toward coverage.
+      Published payloads are unchanged: standalone data packages 150 tasks
+      (28 inactive), and VM images package 151 (29 inactive, including PDE).
+      Inactive payloads have no active source implementation or selection-list
+      entry and do not count toward the 122-task benchmark.
     </p>
     <table>
       <thead><tr><th>Change</th><th>Tasks</th><th>What counts</th></tr></thead>
       <tbody>
-        <tr><td>Instruction</td><td>58</td><td>Agent-facing prompts and instructions, including input documents</td></tr>
-        <tr><td>Verification</td><td>56</td><td>Scoring logic, acceptance rules and grader execution</td></tr>
-        <tr><td>Environment</td><td>37</td><td>Task-specific software, dependencies, setup, staging, paths, resources or platform</td></tr>
-        <tr><td>Data</td><td>30</td><td>Input materials, starter/helper assets, models, media or reference answers</td></tr>
+        <tr><td>Instruction</td><td>46</td><td>Agent-facing prompts and instructions, including input documents</td></tr>
+        <tr><td>Verification</td><td>43</td><td>Scoring logic, acceptance rules and grader execution</td></tr>
+        <tr><td>Environment</td><td>31</td><td>Task-specific software, dependencies, setup, staging, paths, resources or platform</td></tr>
+        <tr><td>Data</td><td>23</td><td>Input materials, starter/helper assets, models, media or reference answers</td></tr>
       </tbody>
     </table>
     <p>
-      Categories overlap; the six conversions are included in the 71 updated
+      Categories overlap; the six conversions are included in the 56 updated
       tasks. Classify by content, not storage location: a prompt edit in a data
       archive counts as Instruction. These counts exclude the retired tasks,
       unselected variants, inactive metadata, packaging-only cleanup and shared
@@ -189,16 +195,17 @@ cleanup_mode: delete</code></pre>
       <thead><tr><th>List</th><th>Units before agent multiplication</th><th>Purpose</th></tr></thead>
       <tbody>
         <tr><td><code>hello_both.txt</code></td><td>2</td><td>Ubuntu and Windows smoke test</td></tr>
-        <tr><td><code>docker_support.txt</code></td><td>101</td><td>Supported local-container subset</td></tr>
-        <tr><td><code>ale_cli.txt</code></td><td>110</td><td>All selected <code>cpu-free-ubuntu</code> tasks, including desktop workflows</td></tr>
-        <tr><td><code>cpu.txt</code></td><td>145</td><td>Ubuntu and Windows CPU tasks</td></tr>
-        <tr><td><code>full.txt</code></td><td>150</td><td>The complete v1.1 benchmark</td></tr>
+        <tr><td><code>docker_support.txt</code></td><td>78</td><td>Supported local-container subset</td></tr>
+        <tr><td><code>ale_cli.txt</code></td><td>86</td><td>All selected <code>cpu-free-ubuntu</code> tasks, including desktop workflows</td></tr>
+        <tr><td><code>cpu.txt</code></td><td>117</td><td>Ubuntu and Windows CPU tasks</td></tr>
+        <tr><td><code>full.txt</code></td><td>122</td><td>The complete v1.1 benchmark</td></tr>
       </tbody>
     </table>
     <p>
       All lists live under <code>selected_tasks/</code>, with difficulty lists
-      under <code>selected_tasks/full/*.txt</code>. A text list contains one task path
-      per line. A YAML list can select explicit variant indices.
+      under <code>selected_tasks/full/*.txt</code>: 45 near-term, 46 full-spectrum,
+      and 36 last-exam tasks. These lists overlap. A text list contains one task
+      path per line. A YAML list can select explicit variant indices.
     </p>
 
     <h2>Choose agent presets</h2>

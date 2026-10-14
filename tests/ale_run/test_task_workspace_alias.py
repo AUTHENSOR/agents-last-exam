@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import sys
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -26,26 +25,10 @@ from ale_run.environments.task_data import (
 from ale_run.orchestration.lifecycle import _stage_task_data, stage_reference
 from ale_run.tasks.driver import TaskDriver
 
-TASK_ROOT = Path(__file__).resolve().parents[2] / "tasks/life_sciences/rgi_mcr1_colistin_v2"
-CANONICAL = "life_sciences/rgi_mcr1_colistin_v2/base"
-VISIBLE = "life_sciences/amr_contig_annotation_instance_1/base"
-ANSWER = {
-    "best_hit_aro": "ARO-X.7",
-    "percent_identity": 88.5,
-    "drug_class": "synthetic class alpha",
-    "resistance_mechanism": "synthetic mechanism beta",
-}
-REFERENCE = {
-    "score_mapping": {"pass_threshold": 0.75},
-    "grading": {
-        "gene_name": {"reference_value": ANSWER["best_hit_aro"]},
-        "percent_identity": {
-            "target": ANSWER["percent_identity"], "full_credit_tolerance": 0.05,
-        },
-        "drug_class": {"reference_value": ANSWER["drug_class"]},
-        "resistance_mechanism": {"reference_value": ANSWER["resistance_mechanism"]},
-    }
-}
+CANONICAL = "fixture_domain/canonical_answer_task/base"
+VISIBLE = "fixture_domain/neutral_workspace/base"
+ANSWER = {"value": "synthetic answer"}
+REFERENCE = {"answer": ANSWER}
 
 
 class FilesystemSandbox:
@@ -108,9 +91,9 @@ class FilesystemSandbox:
 def make_source(root):
     base = root / CANONICAL
     (base / "input/runtime_env").mkdir(parents=True)
-    (base / "input/input_contig.fasta").write_text(">contig\nACGT\n")
-    (base / "input/card.json").write_text("{}")
-    (base / "input/runtime_env/pyproject.toml").write_text('[project]\nname = "rgi-env"\n')
+    (base / "input/input.txt").write_text("synthetic input\n")
+    (base / "input/settings.json").write_text("{}")
+    (base / "input/runtime_env/pyproject.toml").write_text('[project]\nname = "fixture-env"\n')
     (base / "reference/metadata").mkdir(parents=True)
     (base / "reference/metadata/verification_targets.json").write_text(json.dumps(REFERENCE))
     return base
@@ -136,8 +119,8 @@ def make_source(root):
         ("oss", True),
     ],
 )
-async def test_rgi_staging_driver_evaluation_and_collection(
-    tmp_path, monkeypatch, source_kind, prebaked, output_name
+async def test_aliased_staging_driver_evaluation_and_collection(
+    tmp_path, monkeypatch, aliased_task_root, source_kind, prebaked, output_name
 ):
     source_root = tmp_path / "source"
     source_base = make_source(source_root)
@@ -149,7 +132,7 @@ async def test_rgi_staging_driver_evaluation_and_collection(
     sibling.write_text("unrelated")
     if prebaked:
         shutil.copytree(source_base / "input", canonical / "input")
-        original_inode = (canonical / "input/input_contig.fasta").stat().st_ino
+        original_inode = (canonical / "input/input.txt").stat().st_ino
     if source_kind in {"baked", "gs_encrypted"}:
         archive = source_base / "reference.7z"
         subprocess.run(
@@ -203,30 +186,23 @@ async def test_rgi_staging_driver_evaluation_and_collection(
             sandbox.archive_source = (prefix + "reference.7z", source_base / "reference.7z")
 
     monkeypatch.setenv("REMOTE_OUTPUT_DIR", output_name)
-    driver = TaskDriver(str(TASK_ROOT), session=sandbox)
-    module = driver._task_loader._load_module()
-    monkeypatch.setattr(
-        module, "RgiMcr1ColistinV2Config",
-        partial(module.RgiMcr1ColistinV2Config, REMOTE_ROOT_DIR=sandbox.task_data_root),
-    )
-    driver._task_info = driver._task_loader.load()
+    monkeypatch.setenv("REMOTE_ROOT_DIR", sandbox.task_data_root)
+    driver = TaskDriver(str(aliased_task_root), session=sandbox)
     task_info = driver.task_info
     metadata = driver.task_metadata
     spec = task_info["task_data"]
-    assert metadata["task_id"] == "life_sciences/rgi_mcr1_colistin_v2"
+    assert metadata["task_id"] == "fixture_domain/canonical_answer_task"
     assert spec.source_relpath == CANONICAL
-    assert spec.task_name == "rgi_mcr1_colistin_v2"
-    assert spec.sandbox_task_name == "amr_contig_annotation_instance_1"
+    assert spec.task_name == "canonical_answer_task"
+    assert spec.sandbox_task_name == "neutral_workspace"
     assert task_subdir(sandbox, spec) == str(visible)
     for key, value in metadata.items():
         if key.endswith(("_dir", "_file", "_fasta", "_json", "_tsv", "_pyproject")):
-            assert "mcr1" not in value.lower()
-            assert "colistin" not in value.lower()
-    assert "mcr1" not in driver.task_description.lower()
-    assert "colistin" not in driver.task_description.lower()
-    assert "apt-get" not in driver.task_description
-    for package in ("ncbi-blast+", "diamond-aligner", "prodigal"):
-        assert package in driver.task_description
+            assert "canonical_answer" not in value.lower()
+            assert "canonical_answer_task" not in value.lower()
+    assert "canonical_answer" not in driver.task_description.lower()
+    assert "canonical_answer_task" not in driver.task_description.lower()
+    assert str(visible / output_name / "answer.json") in driver.task_description
 
     artifacts = SimpleNamespace(task_data_source=source)
     env = SimpleNamespace(sandbox=sandbox)
@@ -237,16 +213,16 @@ async def test_rgi_staging_driver_evaluation_and_collection(
         assert not canonical.parent.is_symlink()
         assert not visible.is_symlink()
         assert not visible.parent.is_symlink()
-        assert Path(metadata["input_fasta"]).read_text() == ">contig\nACGT\n"
-        assert Path(metadata["card_json"]).is_file()
+        assert Path(metadata["input_file"]).read_text() == "synthetic input\n"
+        assert Path(metadata["settings_json"]).is_file()
         assert Path(metadata["runtime_pyproject"]).is_file()
         assert Path(metadata["remote_output_dir"]).is_dir()
         assert not Path(metadata["verification_targets_file"]).exists()
-        assert not any("mcr1" in str(path) for path in Path(sandbox.task_data_root).rglob("*"))
+        assert not any("canonical_answer" in str(path) for path in Path(sandbox.task_data_root).rglob("*"))
     if prebaked and source_kind not in {"local", "gs_release"}:
-        assert Path(metadata["input_fasta"]).stat().st_ino == original_inode
+        assert Path(metadata["input_file"]).stat().st_ino == original_inode
     assert sibling.read_text() == "unrelated"
-    assert (source_base / "input/input_contig.fasta").exists()
+    assert (source_base / "input/input.txt").exists()
 
     answer_path = Path(metadata["answer_file"])
     assert answer_path.parent == visible / output_name
@@ -282,18 +258,18 @@ async def test_alias_atomically_replaces_empty_destination_and_is_idempotent(tmp
     destination_base = Path(sandbox.task_data_root) / VISIBLE
     destination_base.parent.mkdir()
     source_inode = source_base.parent.stat().st_ino
-    evidence_inode = (source_base / "input/input_contig.fasta").stat().st_ino
+    evidence_inode = (source_base / "input/input.txt").stat().st_ino
     spec = TaskDataSpec(
-        domain_name="life_sciences", task_name="rgi_mcr1_colistin_v2",
-        variant_name="base", sandbox_task_name="amr_contig_annotation_instance_1",
+        domain_name="fixture_domain", task_name="canonical_answer_task",
+        variant_name="base", sandbox_task_name="neutral_workspace",
     )
     for _attempt in range(2):
         assert await prepare_task_subdir(sandbox, spec) == str(destination_base)
         assert not source_base.parent.exists()
         assert destination_base.parent.stat().st_ino == source_inode
-        evidence = destination_base / "input/input_contig.fasta"
+        evidence = destination_base / "input/input.txt"
         assert evidence.stat().st_ino == evidence_inode
-        assert evidence.read_text() == ">contig\nACGT\n"
+        assert evidence.read_text() == "synthetic input\n"
 
 
 @pytest.mark.parametrize(
@@ -375,10 +351,10 @@ async def test_alias_cloud_output_uses_neutral_source_and_standard_destination(
     sandbox = FilesystemSandbox(tmp_path / "guest data")
     source = str(Path(sandbox.task_data_root) / VISIBLE / output_name)
     spec = TaskDataSpec(
-        domain_name="life_sciences",
-        task_name="rgi_mcr1_colistin_v2",
+        domain_name="fixture_domain",
+        task_name="canonical_answer_task",
         variant_name="base",
-        sandbox_task_name="amr_contig_annotation_instance_1",
+        sandbox_task_name="neutral_workspace",
         remote_output_dir=source,
     )
     assert output_pull._output_dir(sandbox, replace(spec, remote_output_dir=None)) == str(
@@ -394,6 +370,6 @@ async def test_alias_cloud_output_uses_neutral_source_and_standard_destination(
     assert command[-2].rstrip("/") == source
     assert command[-1] == destination
     assert report[f"{'gcs' if scheme == 'gs' else scheme}_path"] == destination
-    assert "mcr1" not in run_command.await_args.args[0]
+    assert "canonical_answer" not in run_command.await_args.args[0]
     if scheme == "gs":
         assert command[:4] == ["gsutil", "-m", "rsync", "-r"]

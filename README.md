@@ -17,6 +17,8 @@
 
 Led by **[UC Berkeley RDI](https://rdi.berkeley.edu/)** × **RDI Foundation**
 
+**Versions:** [Run v1.1](docs/releases/v1.1.md) · [Run original v1](docs/releases/v1.md)
+
 <br/>
 
 <a href="assets/teaser.pdf"><img src="assets/teaser.png" alt="ALE benchmark: domains and example workflows" width="100%" /></a>
@@ -49,15 +51,17 @@ across all 55 subdomains and reference integrations for several agent harnesses.
 
 ## Quick start
 
-**ALE v1.1 selects 150 tasks after two retirements.** The upgrade scope
-marks 71 active tasks for rerun and 79 for retention. Updates cover instructions
-(58), verification (56), environment (37), and data (30); categories overlap.
+**ALE v1.1 selects 122 active tasks after 30 retirements.** The upgrade scope
+marks 56 active tasks for rerun and 66 for retention. Updates cover instructions
+(46), verification (43), environment (31), and data (23); categories overlap.
 Six workflows move to open-source Linux tools, three also supported in Docker.
 Task designs and source are frozen. Use the matching images and data pinned in
 the [asset manifest](releases/v1.1/assets.json). The compact
 [run and upgrade guide](docs/releases/v1.1.md) covers the changes, supported
 environments, setup, and existing logs; the [task review](docs/releases/v1.1-task-review.md)
-records decisions, validation scope and limits for all 71 modified tasks.
+records decisions, validation scope and limits for all 56 modified tasks and
+lists all 30 retirements. To preserve the original requirements, use the
+[v1 run guide](docs/releases/v1.md) with v1 code, legacy images, and fresh logs.
 
 ```bash
 git clone git@github.com:rdi-berkeley/agents-last-exam.git
@@ -169,10 +173,15 @@ Set `tasks:` in your experiment to a compatible list:
 
 | List | Tasks | Coverage |
 |---|---:|---|
-| `selected_tasks/full.txt` | 150 | Complete benchmark; difficulty lists under `selected_tasks/full/*.txt` |
-| `selected_tasks/cpu.txt` | 145 | Ubuntu and Windows CPU tasks |
-| `selected_tasks/ale_cli.txt` | 110 | Linux tasks, including desktop workflows |
-| `selected_tasks/docker_support.txt` | 101 | Supported local-container subset |
+| `selected_tasks/full.txt` | 122 | Complete benchmark; difficulty lists under `selected_tasks/full/*.txt` |
+| `selected_tasks/cpu.txt` | 117 | Ubuntu and Windows CPU tasks |
+| `selected_tasks/ale_cli.txt` | 86 | Linux tasks, including desktop workflows |
+| `selected_tasks/docker_support.txt` | 78 | Supported local-container subset |
+
+Difficulty tracks contain 45 near-term, 46 full-spectrum, and 36 last-exam
+tasks. These lists overlap. Published data and images are unchanged: standalone
+data packages 150 tasks (28 inactive), and VM images package 151 (29 inactive,
+including PDE). Inactive payloads are not selected or counted as benchmark tasks.
 
 Environment profiles default to `output_path: null`, keeping bulk task output
 in the sandbox while collecting metadata, trajectories, evaluations, and

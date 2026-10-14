@@ -191,7 +191,7 @@ Windows VMs.
 
 ## 9. Continue to a benchmark task list
 
-Use `selected_tasks/full.txt` for all 150 tasks, or a difficulty list under
+Use `selected_tasks/full.txt` for all 122 tasks, or a difficulty list under
 `selected_tasks/full/`. The environment profile maps the three snapshot IDs
 (`cpu-free-ubuntu`, `cpu-free`, `gpu-free`) to their images and zones.
 

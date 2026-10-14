@@ -3,28 +3,23 @@
   "release": "v1.1",
   "baseline_commit": "2d4d2205c255e2f7dcf568baa1f0c108dfaa3d73",
   "release_commit": "1ba385afe5df7f30e0ae47c80b52f2da0b493645",
-  "baseline_policy": "Task repairs, data updates and open-source conversions since v1 snapshot 2d4d220. Use --from-commit for older snapshots. Retention records reuse eligibility, not original run provenance.",
+  "baseline_policy": "Repair accounting starts at source snapshot 2d4d220. The v1 tag preserves main immediately before v1.1. Use --from-commit for older snapshots. Retention records reuse eligibility, not original run provenance.",
   "hash_policy": "Complete frozen task folders, including task-card edits, executable modes and symlink targets, hashed by ale_run.tasks.revision.task_revision. Generated caches are excluded. Nonrelease evidence is preserved outside task folders; required untracked source files belong to the frozen publication set. Public checkout and runtime folders must have identical task hashes.",
   "revision_status": "frozen",
   "scope_reconciled_date": "2026-10-12",
   "scope_reconciled_timezone": "America/Los_Angeles",
-  "revision_note": "All 150 active task revisions match the frozen source_map_identifier and release_commit. Matching data and image identities are recorded separately in releases/v1.1/assets.json.",
+  "revision_note": "All 122 active task revisions match the frozen source_map_identifier and release_commit. Matching data and image identities are recorded separately in releases/v1.1/assets.json.",
   "tasks": {
     "agriculture_env/crop_rotation_d02": {
-      "action": "retain",
-      "revision": "sha256:369c6753e94b837347e9efdd9f5e6498b8f1cfdf2b2740fa1fa6cd0b4478f25c"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "agriculture_env/ndvi_zonal_statistics_d02": {
-      "action": "rerun",
-      "revision": "sha256:b7be09e0cb3e67f40f1b842f97634f1df769062b7c422c2b9129dcf72c5be617",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "verification",
-        "environment",
-        "data"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "business_finance/american_option_pricing_ls": {
@@ -94,8 +89,10 @@
       "revision": "sha256:78f6cf5016b6f2d13ad7dd8332577a4b3c6320e04e6a48c984f8c18e196f8e29"
     },
     "business_finance/financial_stmt_reconstruction_aapl_fy2024": {
-      "action": "retain",
-      "revision": "sha256:38fa928ff92849ee1f63ccafa752207b763d1551fa2add01baf43f7d2766efe1"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "business_finance/internal_employee_agent_instance_1": {
       "action": "retain",
@@ -118,15 +115,9 @@
       "revision": "sha256:ea4f5caaa9895b6cafa9c970b014b45c65550e4321f3ae2ccf92b0ae95e73b55"
     },
     "business_finance/pe_screening_memo_1": {
-      "action": "rerun",
-      "revision": "sha256:3474da8b3bf8a038f41eb913871d6dd06d6e2070304ed1289e4c30e5b6f4004c",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-main",
-        "Task-local screening-memo judge now uses the shared configured judge instead of a hardcoded model/client."
-      ],
-      "changes": [
-        "verification"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "business_finance/saas_onepager_brand_refresh_instance_1": {
@@ -164,8 +155,10 @@
       "revision": "sha256:b3c2fbaaa459446af67423a850e36760a911bfc184a8de0a923b7f4d5bafac0e"
     },
     "computing_math/branch_bound_atsp": {
-      "action": "retain",
-      "revision": "sha256:c64b0707495cb2cc14a41e3be054dc9a2229f837845f040c470a922a3facd2ad"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "computing_math/cfr_game_theory_equilibrium": {
       "action": "retain",
@@ -227,18 +220,16 @@
       ]
     },
     "computing_math/ising_post_measurement_1": {
-      "action": "rerun",
-      "revision": "sha256:0db6ae79163990cc4d43ed6078ed66defbb414f07d86e26e22e7bb5d2d1ee3f7",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion"
-      ],
-      "changes": [
-        "instruction"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "computing_math/k3_abelian_extensions": {
-      "action": "retain",
-      "revision": "sha256:f6283b9170fe5f699adeee7d21b8a955b66d3f0ab523142388206a5ab96f19c6"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "computing_math/k8s_migration_1": {
       "action": "rerun",
@@ -272,13 +263,9 @@
       "revision": "sha256:939c04f10b5946ec68316c43473425afdfc29c6cd31a181a6960dfad5262c52a"
     },
     "computing_math/os_log_permission_guard_v1": {
-      "action": "rerun",
-      "revision": "sha256:8740652a5e3fc5960d9e89eec814cf117d838209d6557255a16d27d0c6a9b41c",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion"
-      ],
-      "changes": [
-        "environment"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "computing_math/paper_reproduction_instance_1": {
@@ -329,16 +316,9 @@
       ]
     },
     "education_info/moodle_gradebook_closeout_reconciliation": {
-      "action": "rerun",
-      "revision": "sha256:c56a2189a27867f6f132b879a3787c00540c8110eb04cb14d8acf6af08991dce",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification",
-        "data"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "education_info/yi_manuscript_translation_1": {
@@ -364,10 +344,10 @@
       "revision": "sha256:b39a44103ada7e338878ae9253ffc6c43ce4fa7f8c82155a2c12d8abe60105b4"
     },
     "engineering/abb_irb6700_asset_to_urdf_instance_1": {
-      "action": "retain",
-      "revision": "sha256:ef44765f70ba1283adb919ff5feeb03fa2f79dda9ac1dd9fd9eaeecc972c5e47",
-      "changes": [],
-      "retention_note": "Only inactive task-card network metadata changed; selected inputs, grader and runtime behavior are unchanged."
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "engineering/aerospace_low_thrust_trajectory": {
       "action": "rerun",
@@ -525,8 +505,10 @@
       ]
     },
     "engineering/sanding_performance_scoring_instance_1": {
-      "action": "retain",
-      "revision": "sha256:16f07f6f917c7e43331281f54ce0c61fc3597bb2c40fd20d5058dc7ae11bec8d"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "engineering/sumo_urban_am_peak_calibration": {
       "action": "rerun",
@@ -542,16 +524,9 @@
       ]
     },
     "health_medicine/Clinical_Variant_Annotation": {
-      "action": "rerun",
-      "revision": "sha256:1dfc4edec16d94a2586d9c308b7bc7b0c00c9a8cdc6a91ce020f2948cbb920c7",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification",
-        "data"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "health_medicine/causal_ihdp_ite_estimation_6a_v1": {
@@ -578,16 +553,9 @@
       ]
     },
     "health_medicine/crf_sdtm_mapping_4": {
-      "action": "rerun",
-      "revision": "sha256:45e517bb81ebfc81e9eda349244d30834068bd5381af7ee8aa8af80bcef63f86",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification",
-        "data"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "health_medicine/ct_geometry_calibration_catphan": {
@@ -603,8 +571,10 @@
       "revision": "sha256:73cc31193113e37e9e0136c9cb5f2aa05b267fd45c3f96208ebddd5971e646db"
     },
     "health_medicine/epidemiology_forecast": {
-      "action": "retain",
-      "revision": "sha256:24e81c51a77384073b3aceca1ab63799219ba4192b7ace378df9bb1285b1edb4"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "health_medicine/flusight_offline_hosp_forecast_2024_12_14": {
       "action": "rerun",
@@ -617,16 +587,9 @@
       ]
     },
     "health_medicine/healthcare_bias_audit_27a_public_replication_v1": {
-      "action": "rerun",
-      "revision": "sha256:6407eb7261773ce716e9c00560499edfa5002d7ea20ed5f63f10343d6cb6c3fd",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification",
-        "environment"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "health_medicine/healthcare_sap_group_sequential_nsclc": {
@@ -638,8 +601,10 @@
       "revision": "sha256:05ee4c294d41144ae928165843096ebb7198bb19db59b63adfcd4836dfb1cc3b"
     },
     "health_medicine/healthcare_variant_annotation_pipeline": {
-      "action": "retain",
-      "revision": "sha256:892af4f6acbaddfbbf1d96b4ba39e58db7526e0f9e6c7c8dd3ba621d2b97651f"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "health_medicine/limited_angle_ct_dps_reconstruction": {
       "action": "retain",
@@ -713,16 +678,20 @@
       "revision": "sha256:19fad544165c69200cc01950a716e5e14a673b6b8e1b72f0de6b4204f033a3fa"
     },
     "health_medicine/replicate_paper_1": {
-      "action": "retain",
-      "revision": "sha256:77ea1ad36685468f8aea579e9ae757ac9f8b7ed40c26686e1cc8c320d31b9794"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "health_medicine/sa_aki_phenotyping": {
       "action": "retain",
       "revision": "sha256:7cc6f2f67ba1520a216edf2072d6ee4ce6d96cb7cdf26971ac23d7dc6f9f41d5"
     },
     "health_medicine/scene3_skullstrip_qc": {
-      "action": "retain",
-      "revision": "sha256:3dac5ee322bad95f4a087f6efae183357d3550d55c7b54199b42262e3ace43e4"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "health_medicine/simglucose_safe_basal_control_instance_1": {
       "action": "rerun",
@@ -766,20 +735,14 @@
       ]
     },
     "life_sciences/amber_minimization_script_prep_instance_1": {
-      "action": "rerun",
-      "revision": "sha256:15b8d19dc8d0676e97318a983764deba1d6af337883eed07ad55ec2a99a8a36c",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "life_sciences/amber_three_stage_mmgbsa_workflow_instance_1": {
       "action": "rerun",
-      "revision": "sha256:5679ac8fd2ff00ca4a7f0a070f09320de967769335b66d8715b284ff6900fe8d",
+      "revision": "sha256:790200537a04ae24e9533f3f7b7cc385ee10082e7001f886efb75df4bd9dff14",
       "reasons": [
         "task-repair-data-update-or-oss-conversion",
         "source-diff-from-v1-baseline"
@@ -798,42 +761,21 @@
       "revision": "sha256:ecd9e3b8224b16c6813bb267e284c91e108dcd2f6e2130527d38ad727e6acdc2"
     },
     "life_sciences/gene_expression_differential_analysis_functional_enrichment_analysis_1": {
-      "action": "rerun",
-      "revision": "sha256:1e729652a73fd1db482b181c80909f83ebec700e89dede81a1d47c46f0fb97e2",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification",
-        "environment",
-        "data"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "life_sciences/genomic_interval_processing_1": {
-      "action": "rerun",
-      "revision": "sha256:f4940869398a0687affed2c013e327933367ad948d9f6c678a4d64854b0703c4",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification",
-        "data"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "life_sciences/hg002_chr22_germline_variant_pipeline": {
-      "action": "rerun",
-      "revision": "sha256:6fd549cc2c00d5de549cebe7b847666091cb88a28e6ddc8557d51769df2da285",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "life_sciences/idp_ensemble_scoring": {
@@ -863,34 +805,21 @@
       ]
     },
     "life_sciences/protein_function_annotation_instance_1": {
-      "action": "retain",
-      "revision": "sha256:e42c3a1a61eef4baaa6eff875007a37135acdea8873e68027e0aea496b58cca6"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "life_sciences/pseudotime_de": {
-      "action": "rerun",
-      "revision": "sha256:adfe38baa73351faf6d2a72dccd9c2f68cbbf2f98b29682b42e1d46383c9b358",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification",
-        "environment",
-        "data"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "life_sciences/rgi_mcr1_colistin_v2": {
-      "action": "rerun",
-      "revision": "sha256:ad45e68d7e93edc8b91e4504e7860dcfdeae0b50563e0174f29b3c5af3101ce3",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification",
-        "environment"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "life_sciences/spatial_transcriptomics_spatial_domain_identification": {
@@ -950,15 +879,9 @@
       "revision": "sha256:f0394a9916342cec6b5638eed8bb45366db97323b9c8fd139c4edb2d56823d51"
     },
     "physical_sciences/adapt_vqe_molecular_energy": {
-      "action": "rerun",
-      "revision": "sha256:69d9ee7bfa9469242d094d2f9f82b66ec239e5c8896e5c7155f03cbae554bac4",
+      "action": "retire",
       "reasons": [
-        "task-repair-data-update-or-oss-conversion",
-        "source-diff-from-v1-baseline"
-      ],
-      "changes": [
-        "instruction",
-        "verification"
+        "Removed from the final v1.1 task selection."
       ]
     },
     "physical_sciences/climate_prediction": {
@@ -1116,8 +1039,10 @@
       ]
     },
     "transport_safety/capacitated_vehicle_routing_problems": {
-      "action": "retain",
-      "revision": "sha256:397db474866e015e4e890742c5db6044cb6b796eba6846955ad272cf9d249083"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "transport_safety/fds_single_compartment_detector_reconstruction": {
       "action": "retain",
@@ -1174,8 +1099,10 @@
       ]
     },
     "visual_media/inkscape_cultural_poster_design": {
-      "action": "retain",
-      "revision": "sha256:d5dec7083b22f822cd9d55e072563b28b54e50bdbc5ff4651db2f01c9a281bb3"
+      "action": "retire",
+      "reasons": [
+        "Removed from the final v1.1 task selection."
+      ]
     },
     "visual_media/music_transcription": {
       "action": "rerun",
@@ -1243,11 +1170,11 @@
     }
   },
   "change_summary": {
-    "updated_tasks": 71,
-    "instruction": 58,
-    "verification": 56,
-    "environment": 37,
-    "data": 30
+    "updated_tasks": 56,
+    "instruction": 46,
+    "verification": 43,
+    "environment": 31,
+    "data": 23
   },
   "category_definitions": {
     "instruction": "Agent-facing prompt and instructions, including documents distributed with task inputs.",
@@ -1256,7 +1183,9 @@
     "data": "Inputs, starter/helper assets, models, media or reference answers; excludes instruction-only, grader-only and runtime-only payload edits."
   },
   "counting_policy": "Distinct selected benchmark tasks relative to v1 source and distributed inputs/references. Categories overlap. Excludes retired tasks, unselected variants, inactive metadata, packaging-only cleanup and shared framework changes.",
-  "source_map_identifier": "sha256:de99aa42b7af16eb33546a6e21a98d50c264dd8ccf11e78837543c45ad42d2f2",
+  "source_map_identifier": "sha256:70f4f4aa08d2d544b816bac5a27007a31d0517638ff81c64d746ba649dbea66f",
   "frozen_at": "2026-10-14T07:25:43.680204+00:00",
-  "release_commit_status": "frozen-source-committed"
+  "release_commit_status": "frozen-source-committed",
+  "v1_tag": "v1",
+  "v1_commit": "d9abc0734b56ea34116c5bfcbdd0b808269ab9e2"
 }

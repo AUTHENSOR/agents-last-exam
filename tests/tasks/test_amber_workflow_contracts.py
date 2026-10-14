@@ -2,10 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tasks.life_sciences.amber_minimization_script_prep_instance_1.scripts import (
-    verify_submission as minimization,
-)
-from tasks.life_sciences.amber_minimization_script_prep_instance_1.scripts.workflow_parser import (
+from tasks.life_sciences.amber_three_stage_mmgbsa_workflow_instance_1.scripts.workflow_parser import (
     ContractError,
     Shell,
     namelists,
@@ -17,14 +14,6 @@ from tasks.life_sciences.amber_three_stage_mmgbsa_workflow_instance_1.scripts im
 )
 
 
-MIN_BASE = "GLN_phb2_lc3_aurka_model_0"
-MIN_LEAP = f"""source leaprc.protein.ff14SB
-set default PBRadii mbondi3
-protein = loadPdb "complex_structure.pdb"
-saveAmberParm protein {MIN_BASE}.prmtop {MIN_BASE}.inpcrd
-savePdb protein {MIN_BASE}_fixed.pdb
-quit
-"""
 MIN_MDIN = """Relaxation
 &cntrl
  imin=1, ntb=0, cut=999.0, igb=8,
@@ -32,104 +21,82 @@ MIN_MDIN = """Relaxation
  saltcon=0.15, intdiel=1.0, extdiel=78.5,
 /
 """
-MIN_SCRIPT = f'''#!/bin/bash
+SHELL_BUILD_SCRIPT = """#!/bin/bash
+#SBATCH --job-name=synthetic_system
 #SBATCH --nodes=1
-#SBATCH --gres=gpu:1
 #SBATCH --ntasks-per-node=1
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=16GB
-#SBATCH --time=7:00:00
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-NAME="{MIN_BASE}"
-PARAMS="$ROOT/params"
-module load amber/22 cuda/11.6.2
-mkdir -p "$PARAMS"
-if [ ! -f "$PARAMS/$NAME.prmtop" ] || [ ! -f "$PARAMS/$NAME.inpcrd" ]; then
-  tleap -f "$ROOT/leap.in"
-  mv "$ROOT/$NAME.prmtop" "$PARAMS/$NAME.prmtop"
-  mv "$ROOT/$NAME.inpcrd" "$PARAMS/$NAME.inpcrd"
+#SBATCH --mem=16G
+#SBATCH --time=04:00:00
+
+set -euo pipefail
+
+module load amber/22
+module load cuda/11.6.2
+
+SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(cd "$SCRIPT_DIR" && pwd)
+if [ ! -f "$SCRIPT_DIR/leap.in" ]; then
+    SCRIPT_DIR="/media/user/data/agenthle/life_sciences/synthetic_workflow/base/output"
 fi
-"$AMBERHOME/bin/pmemd.cuda" -O -i "$ROOT/step2_implicit.mini.mdin" -p "$PARAMS/$NAME.prmtop" -c "$PARAMS/$NAME.inpcrd" -ref "$PARAMS/$NAME.inpcrd" -o min.out -r min.rst
-'''
+INPUT_DIR="$SCRIPT_DIR/../input"
+PARAMS_DIR="$SCRIPT_DIR/params"
+BASENAME="synthetic_system"
+TOP="$PARAMS_DIR/$BASENAME.prmtop"
+COORDS="$PARAMS_DIR/$BASENAME.inpcrd"
 
+mkdir -p "$PARAMS_DIR"
+if [ ! -s "$TOP" ] || [ ! -s "$COORDS" ]; then
+    cp "$INPUT_DIR/complex_structure.pdb" "$PARAMS_DIR/complex_structure.pdb"
+    cd "$PARAMS_DIR"
+    "$AMBERHOME/bin/tleap" -f "$SCRIPT_DIR/leap.in"
+fi
 
-@pytest.fixture
-def min_bundle():
-    return {"leap.in": MIN_LEAP, "step2_implicit.mini.mdin": MIN_MDIN, "submit_min.sh": MIN_SCRIPT}
+test -s "$TOP"
+test -s "$COORDS"
+cd "$SCRIPT_DIR"
+"$AMBERHOME/bin/pmemd.cuda" -O \\
+    -i "$SCRIPT_DIR/step2_implicit.mini.mdin" \\
+    -p "$TOP" \\
+    -c "$COORDS" \\
+    -ref "$COORDS" \\
+    -o "$SCRIPT_DIR/min.out" \\
+    -r "$SCRIPT_DIR/min.rst"
+"""
+SHELL_BUILD_INPUT = """source leaprc.protein.ff14SB
+set default PBRadii mbondi3
 
-
-@pytest.mark.parametrize("cut", ["999", "999.000", "+9.99e2", "9.99D+02"])
-def test_minimization_numeric_equivalence(min_bundle, cut):
-    min_bundle["step2_implicit.mini.mdin"] = MIN_MDIN.replace("999.0", cut)
-    result = minimization.evaluate_output_bundle(min_bundle)
-    assert result["passed"], result
-
-
+complex = loadpdb complex_structure.pdb
+check complex
+saveamberparm complex synthetic_system.prmtop synthetic_system.inpcrd
+savepdb complex synthetic_system_fixed.pdb
+quit
+"""
 @pytest.mark.parametrize(
-    "change",
+    "topology,coordinates",
     [
-        lambda text: (
-            text.replace("&cntrl", "&CNTRL").replace("igb", "IGB").replace("/\n", "&END\n")
-        ),
-        lambda text: text.replace(", ", "\n "),
-        lambda text: text.replace("cut=999.0", "! cut=12\n cut=999"),
+        (None, None),
+        ("top", None),
+        (None, "coord"),
+        ("top", "coord"),
+        ("", "coord"),
+        ("top", ""),
+        ("", ""),
     ],
 )
-def test_minimization_namelist_language(min_bundle, change):
-    min_bundle["step2_implicit.mini.mdin"] = change(MIN_MDIN)
-    result = minimization.evaluate_output_bundle(min_bundle)
-    assert result["passed"], result
-
-
-@pytest.mark.parametrize(
-    "change",
-    [
-        lambda text: text.replace("loadPdb", "LOADPDB").replace("saveAmberParm", "saveamberparm"),
-        lambda text: (
-            text.replace("protein =", "ProteinUnit =")
-            .replace("Parm protein", "Parm ProteinUnit")
-            .replace("Pdb protein", "Pdb ProteinUnit")
-        ),
-        lambda text: text.replace(f"{MIN_BASE}.prmtop", f'"./{MIN_BASE}.prmtop"'),
-        lambda text: "# loadpdb wrong.pdb\n" + text,
-    ],
-)
-def test_minimization_leap_equivalence(min_bundle, change):
-    min_bundle["leap.in"] = change(MIN_LEAP)
-    result = minimization.evaluate_output_bundle(min_bundle)
-    assert result["passed"], result
-
-
-@pytest.mark.parametrize(
-    "change",
-    [
-        lambda text: text.replace('"$AMBERHOME/bin/pmemd.cuda"', '"pmemd.cuda"'),
-        lambda text: text.replace("NAME", "SYSTEM_ID").replace("$PARAMS", "${PARAMS}"),
-        lambda text: text.replace("-O -i", "-i").replace("-r min.rst", "-r min.rst -O"),
-        lambda text: text.replace('-p "$PARAMS/$NAME.prmtop"', '-p "$PARAMS/./$NAME.prmtop"'),
-        lambda text: text.replace(
-            '"$AMBERHOME/bin/pmemd.cuda"', 'command "$AMBERHOME/bin/pmemd.cuda"'
-        ),
-        lambda text: (
-            text.replace('"$AMBERHOME/bin/pmemd.cuda"', 'run_min() { "$AMBERHOME/bin/pmemd.cuda"')
-            + "}\nrun_min\n"
-        ),
-    ],
-)
-def test_minimization_shell_equivalence(min_bundle, change):
-    min_bundle["submit_min.sh"] = change(MIN_SCRIPT)
-    result = minimization.evaluate_output_bundle(min_bundle)
-    assert result["passed"], result
-
-
-@pytest.mark.parametrize(
-    "invocation",
-    ["tleap -s", '"$AMBERHOME/bin/tleap" -s', "run_ambertools.sh tleap -s"],
-)
-def test_minimization_tleap_standalone_s(min_bundle, invocation):
-    min_bundle["submit_min.sh"] = MIN_SCRIPT.replace("tleap -f", invocation + " -f")
-    result = minimization.evaluate_output_bundle(min_bundle)
-    assert result["passed"], result
+@pytest.mark.parametrize("guard", ["test -s", "test -f", "test -e"])
+def test_shell_build_and_skip_paths(topology, coordinates, guard):
+    existing = {"leap.in": SHELL_BUILD_INPUT}
+    for extension, content in (("prmtop", topology), ("inpcrd", coordinates)):
+        if content is not None:
+            existing[f"params/synthetic_system.{extension}"] = content
+    shell = Shell(SHELL_BUILD_SCRIPT.replace("test -s", guard), existing)
+    assert not shell.stopped
+    builds = [command for command in shell.commands if command.argv[0].endswith("/tleap")]
+    assert len(builds) == (0 if topology and coordinates else 1)
+    runs = [command for command in shell.commands if command.argv[0].endswith("/pmemd.cuda")]
+    assert len(runs) == 1
 
 
 def test_tleap_s_option_arity_is_tool_specific():
@@ -163,111 +130,6 @@ def test_linux_root_path_spelling(prefix):
     assert path(prefix + "input/./prod.mdcrd") == "/input/prod.mdcrd"
     assert path("../input/prod.mdcrd", prefix + "script") == "/input/prod.mdcrd"
     assert path(prefix + "other/prod.mdcrd") != "/input/prod.mdcrd"
-
-
-@pytest.mark.parametrize(
-    "old,new",
-    [
-        ("cut=999.0", "cut=998.9"),
-        ("igb=8", "igb=5"),
-        ("imin=1", "imin=0"),
-        ("ntb=0", "ntb=1"),
-        ("maxcyc=5000", "maxcyc=1999"),
-        ("ncyc=2500", "ncyc=5000"),
-        ("saltcon=0.15", "saltcon=NaN"),
-        ("extdiel=78.5", "extdiel='oops'"),
-        ("intdiel=1.0", "intdiel=1e999"),
-        ("cut=999.0", "cut='999.0'"),
-        ("&cntrl", "&gb"),
-        ("/\n", ""),
-        ("igb=8", "igb=8, igb=5"),
-        ("cut=999.0", "! cut=999.0"),
-        ("ntpr=100", "ntpr=garbage"),
-        ("ntxo=2", "ntxo=7"),
-    ],
-)
-def test_minimization_rejects_bad_namelists(min_bundle, old, new):
-    min_bundle["step2_implicit.mini.mdin"] = MIN_MDIN.replace(old, new)
-    assert not minimization.evaluate_output_bundle(min_bundle)["passed"]
-
-
-@pytest.mark.parametrize(
-    "change",
-    [
-        lambda text: text.replace("saveAmberParm protein", "saveAmberParm Protein"),
-        lambda text: text.replace("complex_structure.pdb", "Complex_structure.pdb"),
-        lambda text: text.replace("source leaprc", "# source leaprc"),
-        lambda text: text.replace("mbondi3", "mbondi2"),
-        lambda text: "quit\n" + text,
-        lambda text: text.replace("saveAmberParm", "protein = loadPdb wrong.pdb\nsaveAmberParm"),
-        lambda text: text.replace("savePdb protein", "savePdb other"),
-    ],
-)
-def test_minimization_rejects_bad_leap(min_bundle, change):
-    min_bundle["leap.in"] = change(MIN_LEAP)
-    assert not minimization.evaluate_output_bundle(min_bundle)["passed"]
-
-
-@pytest.mark.parametrize(
-    "change",
-    [
-        lambda text: text.replace(
-            '"$AMBERHOME/bin/pmemd.cuda"', 'echo "$AMBERHOME/bin/pmemd.cuda"'
-        ),
-        lambda text: text.replace('"$AMBERHOME/bin/pmemd.cuda"', '# "$AMBERHOME/bin/pmemd.cuda"'),
-        lambda text: text.replace(
-            '"$AMBERHOME/bin/pmemd.cuda"', 'false && "$AMBERHOME/bin/pmemd.cuda"'
-        ),
-        lambda text: (
-            text.replace(
-                '"$AMBERHOME/bin/pmemd.cuda"', 'if false; then "$AMBERHOME/bin/pmemd.cuda"'
-            )
-            + "fi\n"
-        ),
-        lambda text: (
-            text.replace(
-                '"$AMBERHOME/bin/pmemd.cuda"', 'never_called() { "$AMBERHOME/bin/pmemd.cuda"'
-            )
-            + "}\n"
-        ),
-        lambda text: text.replace(
-            '"$AMBERHOME/bin/pmemd.cuda"', 'exit 0\n"$AMBERHOME/bin/pmemd.cuda"'
-        ),
-        lambda text: text.replace('-p "$PARAMS/$NAME.prmtop"', '-p "$PARAMS/wrong.prmtop"'),
-        lambda text: text.replace('-c "$PARAMS/$NAME.inpcrd"', '-c "$ROOT/$NAME.inpcrd"'),
-        lambda text: text.replace('-ref "$PARAMS/$NAME.inpcrd"', "-ref wrong.inpcrd"),
-        lambda text: text.replace('tleap -f "$ROOT/leap.in"', 'echo tleap -f "$ROOT/leap.in"'),
-        lambda text: text.replace("if [ ! -f", "if [ -f"),
-        lambda text: text.replace(" || ", " && "),
-        lambda text: text.replace("  mv", "  echo mv"),
-        lambda text: text.replace("module load", "echo module load"),
-        lambda text: text + text.splitlines()[-1] + "\n",
-        lambda text: text.replace("fi\n", ""),
-        lambda text: text.replace("#SBATCH --mem=16GB\n", "") + "#SBATCH --mem=16GB\n",
-        lambda text: text.replace('"$AMBERHOME/bin/pmemd.cuda"', "'${AMBERHOME}/bin/pmemd.cuda'"),
-    ],
-)
-def test_minimization_rejects_bad_shell(min_bundle, change):
-    min_bundle["submit_min.sh"] = change(MIN_SCRIPT)
-    assert not minimization.evaluate_output_bundle(min_bundle)["passed"]
-
-
-def test_minimization_file_set(min_bundle):
-    assert not minimization.evaluate_output_bundle(min_bundle, present_files=[])["passed"]
-    min_bundle["extra.txt"] = "extra"
-    assert not minimization.evaluate_output_bundle(min_bundle)["passed"]
-
-
-def test_minimization_local_reference():
-    reference = (
-        Path(__file__).resolve().parents[2]
-        / "task-data-hf/extracted/life_sciences/amber_minimization_script_prep_instance_1/base/reference"
-    )
-    if not reference.exists():
-        pytest.skip("local task data not staged")
-    bundle = {name: (reference / name).read_text() for name in minimization.REQUIRED_FILES}
-    result = minimization.evaluate_output_bundle(bundle)
-    assert result["passed"], result
 
 
 @pytest.mark.parametrize(
@@ -625,13 +487,13 @@ def test_mmgbsa_local_reference():
 
 @pytest.mark.parametrize(
     "task",
-    ["amber_minimization_script_prep_instance_1", "amber_three_stage_mmgbsa_workflow_instance_1"],
+    ["amber_three_stage_mmgbsa_workflow_instance_1"],
 )
 def test_generated_prompts_disclose_supported_shell_contract(task):
     import importlib
     import json
 
-    from tasks.life_sciences.amber_minimization_script_prep_instance_1.scripts.workflow_parser import (
+    from tasks.life_sciences.amber_three_stage_mmgbsa_workflow_instance_1.scripts.workflow_parser import (
         SHELL_CONTRACT,
     )
 
@@ -669,36 +531,6 @@ def test_generated_prompts_disclose_supported_shell_contract(task):
 def test_mmgbsa_rejects_corrupted_artifacts(mm_bundle, insertion):
     mm_bundle["submit_mmgbsa.sh"] = MM_SCRIPT.replace("MMPBSA.py -O", insertion + "MMPBSA.py -O")
     assert not mmgbsa.evaluate_output_bundle(mm_bundle)["passed"]
-
-
-@pytest.mark.parametrize(
-    "insertion",
-    [
-        'rm "$PARAMS/$NAME.prmtop"\n',
-        "set -e\nfalse\n",
-        "stop() { exit 0; }; stop\n",
-    ],
-)
-def test_minimization_rejects_deleted_or_unreachable_inputs(min_bundle, insertion):
-    min_bundle["submit_min.sh"] = MIN_SCRIPT.replace(
-        '"$AMBERHOME/bin/pmemd.cuda"', insertion + '"$AMBERHOME/bin/pmemd.cuda"'
-    )
-    assert not minimization.evaluate_output_bundle(min_bundle)["passed"]
-
-
-@pytest.mark.parametrize(
-    "old,new",
-    [
-        ("--gres=gpu:1", "--gres=gpu:1,gpu:2"),
-        ("--nodes=1", "--nodes=1-2"),
-        ("--nodes=1", "--nodes=1\n#SBATCH --nodes=2"),
-        ("--cpus-per-task=2", "--cpus-per-task=20"),
-        ("#!/bin/bash", "#!/bin/bashfake"),
-    ],
-)
-def test_minimization_rejects_incorrect_scheduler_shape(min_bundle, old, new):
-    min_bundle["submit_min.sh"] = MIN_SCRIPT.replace(old, new)
-    assert not minimization.evaluate_output_bundle(min_bundle)["passed"]
 
 
 @pytest.mark.parametrize("igb,passed", [(8, True), (0, False)])
@@ -753,205 +585,6 @@ def test_mmgbsa_rejects_overwritten_staged_trajectory(mm_bundle):
         "MMPBSA.py -O", "echo fake > ../input/prod.mdcrd\nMMPBSA.py -O"
     )
     assert not mmgbsa.evaluate_output_bundle(mm_bundle)["passed"]
-
-
-GPT6_MIN_SCRIPT = """#!/bin/bash
-#SBATCH --job-name=GLN_phb2_lc3_aurka_model_0
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=16G
-#SBATCH --time=04:00:00
-
-set -euo pipefail
-
-module load amber/22
-module load cuda/11.6.2
-
-SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
-SCRIPT_DIR=$(cd "$SCRIPT_DIR" && pwd)
-# SLURM executes a spool copy; retain the original deployment location.
-if [ ! -f "$SCRIPT_DIR/leap.in" ]; then
-    SCRIPT_DIR="/media/user/data/agenthle/life_sciences/amber_minimization_script_prep_instance_1/base/output"
-fi
-INPUT_DIR="$SCRIPT_DIR/../input"
-PARAMS_DIR="$SCRIPT_DIR/params"
-BASENAME="GLN_phb2_lc3_aurka_model_0"
-TOP="$PARAMS_DIR/$BASENAME.prmtop"
-COORDS="$PARAMS_DIR/$BASENAME.inpcrd"
-
-mkdir -p "$PARAMS_DIR"
-if [ ! -s "$TOP" ] || [ ! -s "$COORDS" ]; then
-    cp "$INPUT_DIR/complex_structure.pdb" "$PARAMS_DIR/complex_structure.pdb"
-    cd "$PARAMS_DIR"
-    "$AMBERHOME/bin/tleap" -f "$SCRIPT_DIR/leap.in"
-fi
-
-# Do not launch minimization if LEaP failed to produce usable build files.
-test -s "$TOP"
-test -s "$COORDS"
-cd "$SCRIPT_DIR"
-"$AMBERHOME/bin/pmemd.cuda" -O \\
-    -i "$SCRIPT_DIR/step2_implicit.mini.mdin" \\
-    -p "$TOP" \\
-    -c "$COORDS" \\
-    -ref "$COORDS" \\
-    -o "$SCRIPT_DIR/min.out" \\
-    -r "$SCRIPT_DIR/min.rst"
-"""
-GPT6_MIN_LEAP = """source leaprc.protein.ff14SB
-set default PBRadii mbondi3
-
-complex = loadpdb complex_structure.pdb
-check complex
-saveamberparm complex GLN_phb2_lc3_aurka_model_0.prmtop GLN_phb2_lc3_aurka_model_0.inpcrd
-savepdb complex GLN_phb2_lc3_aurka_model_0_fixed.pdb
-quit
-"""
-GPT6_MIN_MDIN = """GLN_phb2_lc3_aurka_model_0 implicit-solvent minimization
-&cntrl
-  imin=1,
-  maxcyc=5000,
-  ncyc=2500,
-  ntmin=1,
-  drms=0.001,
-  ntx=1,
-  irest=0,
-  ntb=0,
-  cut=999.0,
-  igb=8,
-  saltcon=0.15,
-  intdiel=1.0,
-  extdiel=78.5,
-  ntc=2,
-  ntf=2,
-  ntr=0,
-  ntpr=100,
-  ntwx=0,
-  ntxo=2,
-/
-"""
-
-
-@pytest.fixture
-def gpt6_min_bundle():
-    return {
-        "submit_min.sh": GPT6_MIN_SCRIPT,
-        "leap.in": GPT6_MIN_LEAP,
-        "step2_implicit.mini.mdin": GPT6_MIN_MDIN,
-    }
-
-
-def test_gpt6_minimization_exact_20260907_artifact(gpt6_min_bundle):
-    import hashlib
-
-    expected = {
-        "leap.in": "0993015cd9bae2049ca50467ead068f2e5b1f2afc72966a6f92e3469ea23aaa3",
-        "step2_implicit.mini.mdin": "7e88f550c1b03a37257a75d345fc10257759517f66de1130b5ab3f63184871c5",
-        "submit_min.sh": "3a0559ce1f03a65dab44693f5641c3dfcc8d5d13c7ba22fde1b0a9d6a6b221ff",
-    }
-    assert {
-        name: hashlib.sha256(text.encode()).hexdigest() for name, text in gpt6_min_bundle.items()
-    } == expected
-    result = minimization.evaluate_output_bundle(gpt6_min_bundle)
-    assert result["passed"], result
-
-
-@pytest.mark.parametrize(
-    "topology,coordinates",
-    [
-        (None, None),
-        ("top", None),
-        (None, "coord"),
-        ("top", "coord"),
-        ("", "coord"),
-        ("top", ""),
-        ("", ""),
-    ],
-)
-@pytest.mark.parametrize("guard", ["test -s", "test -f", "test -e"])
-def test_gpt6_minimization_build_and_skip_paths(topology, coordinates, guard):
-    existing = {"leap.in": GPT6_MIN_LEAP}
-    for extension, content in (("prmtop", topology), ("inpcrd", coordinates)):
-        if content is not None:
-            existing[f"params/{MIN_BASE}.{extension}"] = content
-    shell = Shell(GPT6_MIN_SCRIPT.replace("test -s", guard), existing)
-    assert not shell.stopped
-    builds = [command for command in shell.commands if command.argv[0].endswith("/tleap")]
-    assert len(builds) == (0 if topology and coordinates else 1)
-    runs = [command for command in shell.commands if command.argv[0].endswith("/pmemd.cuda")]
-    assert len(runs) == 1
-
-
-@pytest.mark.parametrize(
-    "insertion",
-    [
-        'rm "$TOP"\n',
-        'rm "$COORDS"\n',
-        ': > "$TOP"\n',
-        'echo fake > "$TOP"\n',
-        'cp "$COORDS" "$TOP"\n',
-        'cp "$TOP" "$COORDS"\n',
-        "false\n",
-    ],
-)
-def test_gpt6_minimization_rejects_invalid_postbuild_artifacts(gpt6_min_bundle, insertion):
-    gpt6_min_bundle["submit_min.sh"] = GPT6_MIN_SCRIPT.replace(
-        'test -s "$TOP"', insertion + 'test -s "$TOP"'
-    )
-    result = minimization.evaluate_output_bundle(gpt6_min_bundle)
-    assert not result["passed"], result
-
-
-@pytest.mark.parametrize(
-    "change",
-    [
-        lambda text: text.replace(
-            '[ ! -s "$TOP" ] || [ ! -s "$COORDS" ]', '[ ! -s "$TOP" ] && [ ! -s "$COORDS" ]'
-        ),
-        lambda text: text.replace('[ ! -s "$TOP" ] || [ ! -s "$COORDS" ]', '[ ! -s "$TOP" ]'),
-        lambda text: text.replace('"$AMBERHOME/bin/tleap" -f', 'echo "$AMBERHOME/bin/tleap" -f'),
-        lambda text: text.replace(
-            '"$AMBERHOME/bin/tleap" -f', 'false && "$AMBERHOME/bin/tleap" -f'
-        ),
-        lambda text: text.replace(
-            'test -s "$TOP"',
-            'if [ -s "$TOP" ] && [ -s "$COORDS" ]; then exit 0; fi\ntest -s "$TOP"',
-        ),
-        lambda text: text.replace(
-            "fi\n\n# Do not launch", "else\n    exit 0\nfi\n\n# Do not launch"
-        ),
-        lambda text: text.replace(
-            '-f "$SCRIPT_DIR/leap.in"\nfi', '-f "$SCRIPT_DIR/missing.in"\nfi'
-        ),
-    ],
-)
-def test_gpt6_minimization_rejects_broken_guard_scenarios(gpt6_min_bundle, change):
-    gpt6_min_bundle["submit_min.sh"] = change(GPT6_MIN_SCRIPT)
-    result = minimization.evaluate_output_bundle(gpt6_min_bundle)
-    assert not result["passed"], result
-
-
-@pytest.mark.parametrize("transport", ["cp", "mv"])
-@pytest.mark.parametrize("directory_target", [False, True])
-def test_minimization_postbuild_checks_after_file_transport(
-    min_bundle, transport, directory_target
-):
-    script = MIN_SCRIPT.replace("ROOT=", "set -e\nROOT=", 1).replace("  mv ", f"  {transport} ")
-    if directory_target:
-        script = script.replace(
-            f'{transport} "$ROOT/$NAME.prmtop" "$PARAMS/$NAME.prmtop"',
-            f'{transport} "$ROOT/$NAME.prmtop" "$PARAMS/"',
-        ).replace(
-            f'{transport} "$ROOT/$NAME.inpcrd" "$PARAMS/$NAME.inpcrd"',
-            f'{transport} "$ROOT/$NAME.inpcrd" "$PARAMS/"',
-        )
-    min_bundle["submit_min.sh"] = script.replace(
-        "fi\n", 'fi\ntest -s "$PARAMS/$NAME.prmtop"\ntest -s "$PARAMS/$NAME.inpcrd"\n'
-    )
-    result = minimization.evaluate_output_bundle(min_bundle)
-    assert result["passed"], result
 
 
 @pytest.mark.parametrize("damage", ["", "rm min.rst;", ": > min.rst;", "false;"])

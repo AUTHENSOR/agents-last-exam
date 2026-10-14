@@ -259,26 +259,6 @@ async def test_unsupported_audio_never_switches_provider_or_model(judge_endpoint
     assert len(calls) == 1
 
 
-def test_pe_rubric_and_system_role_are_preserved(monkeypatch, judge_endpoint):
-    from tasks.business_finance.pe_screening_memo_1.scripts import score_screening_memo as scorer
-
-    calls = []
-
-    def handle(request):
-        calls.append(json.loads(request.content))
-        return httpx.Response(200, json=completion("yes"))
-
-    install_transport(monkeypatch, handle)
-    assert scorer._llm_judge("memo section", "original question?")
-    assert calls[0]["messages"] == [
-        {"role": "system", "content": scorer.SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": 'Text:\n"""\nmemo section\n"""\n\nQuestion: original question?',
-        },
-    ]
-
-
 def test_robotics_rubric_and_score_are_preserved(monkeypatch, judge_endpoint):
     from tasks.engineering.robotics_blender_tabletop_reconstruction import main
 

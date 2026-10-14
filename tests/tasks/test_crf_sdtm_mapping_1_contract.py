@@ -180,12 +180,17 @@ def test_malformed_csv_rejected(bad):
     assert score_mapping_csv(raw, render([ROW]), variant="base").score == 0
 
 
-def test_main_uses_own_scorer_after_crf4_import():
+def test_main_uses_own_scorer_after_unrelated_import():
     result = subprocess.run(
         [
             sys.executable,
             "-c",
-            "import tasks.health_medicine.crf_sdtm_mapping_4.main; import tasks.health_medicine.crf_sdtm_mapping_1.main as task; print(task.score_mapping_csv.__module__)",
+            "import sys, types; "
+            "unrelated = types.ModuleType('score_crf_sdtm_mapping'); "
+            "sys.modules['score_crf_sdtm_mapping'] = unrelated; "
+            "import tasks.health_medicine.crf_sdtm_mapping_1.main as task; "
+            "assert sys.modules['score_crf_sdtm_mapping'] is unrelated; "
+            "print(task.score_mapping_csv.__module__)",
         ],
         capture_output=True,
         text=True,

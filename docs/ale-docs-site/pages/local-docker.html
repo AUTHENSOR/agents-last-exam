@@ -21,7 +21,7 @@
     <div class="note">
       <div class="note-title">Supported Linux subset</div>
       Use <code>configs/environments/docker.yaml</code> with
-      <code>selected_tasks/docker_support.txt</code> for 101 v1.1 tasks,
+      <code>selected_tasks/docker_support.txt</code> for 78 v1.1 tasks,
       including Blender building reconstruction, MuseScore transcription, and
       Ardour project migration. Use the frozen task source with the matching
       runtime digest and data pins.
@@ -73,6 +73,8 @@ scripts/fetch_task_data.sh --revision "$REVISION" --sha256 "$SHA256"</code></pre
       Before the agent runs, ALE copies <code>input/</code> and
       <code>software/</code> into the container. It copies
       <code>reference/</code> only after the agent finishes.
+      The unchanged archive packages 150 tasks, including 28 inactive payloads;
+      only tasks on the active selection list are staged.
     </p>
 
     <h2>Use the shipped environment</h2>
@@ -111,7 +113,7 @@ tasks: selected_tasks/docker_support.txt</code></pre>
     <ul>
       <li>Linux tasks only. Windows and GPU snapshots are not mapped.</li>
       <li>The sandbox shares the host kernel and is not VM-isolated.</li>
-      <li>Nine Linux tasks are excluded: four require nested Docker, two require Apptainer or Singularity GUI bundles, and three require namespace or systemd/cgroup facilities unavailable in the default profile.</li>
+      <li>Eight Linux tasks are excluded: four require nested Docker, one requires an Apptainer or Singularity GUI bundle, and three require namespace or systemd/cgroup facilities unavailable in the default profile.</li>
       <li>G-code requires bubblewrap PID/network namespaces, which the default container denies. Road and inner-support require systemd supervision, while the entrypoint runs the CUA server as PID 1. Inner-support also requires writable delegated cgroups; the container mounts cgroups read-only. AppImage extraction fixes only FreeCAD launching, not these evaluator requirements.</li>
       <li>Use the <a href="/pages/local.html">QEMU/KVM VM provider</a> for these excluded tasks, preserving their isolation and resource limits.</li>
       <li>Opt-in privileged DinD hooks remain available for custom development setups, but they are not part of the supported default task list and can add substantial I/O at high concurrency.</li>

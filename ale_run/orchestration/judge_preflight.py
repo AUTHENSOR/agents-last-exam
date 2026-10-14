@@ -14,7 +14,6 @@ from .experiment_spec import RunUnit
 logger = logging.getLogger(__name__)
 
 _TEXT_ONLY_TASKS = frozenset({
-    "business_finance/pe_screening_memo_1",
     "engineering/humanoid_wbc_policy_evaluation",
 })
 _TASKS_ROOT = Path(__file__).resolve().parents[2] / "tasks"

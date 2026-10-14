@@ -11,24 +11,18 @@ import sys
 import tarfile
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
-from tasks.health_medicine.healthcare_bias_audit_27a_public_replication_v1.scripts import (
-    score_outputs as healthcare,
-)
 from tasks.health_medicine.obermeyer_bias_reproduction.scripts import score_outputs as obermeyer
 
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE = ROOT.parent / "release-staging/ale-task-fixes-20260913"
 TASKS = {
-    "healthcare_bias_audit_27a_public_replication_v1": healthcare,
     "obermeyer_bias_reproduction": obermeyer,
 }
 FROZEN_HASHES = {
-    "healthcare_bias_audit_27a_public_replication_v1": "404032ce7cb6cc874d7fe2c28d6637f0ed770085ba670c8b62e7d0438f317d15",
     "obermeyer_bias_reproduction": "e5baa9d2cc174a31f4f852e09da6b6cb28f7cc4f6931f86ee1d933faafc5ac1f",
 }
 OBERMEYER_FILES = {
@@ -65,33 +59,20 @@ def artifacts():
     for task, scorer in TASKS.items():
         selection = next(row for row in rows if row["task"] == f"health_medicine/{task}")
         base = RELEASE / "data-v1.1/files/health_medicine" / task / "base"
-        if scorer is healthcare:
-            reference = {
-                name: read(base / "reference" / name) for name in scorer.REQUIRED_OUTPUT_FILES
-            }
-        else:
-            reference = {
-                "analysis_data_csv": read(base / "input/analysis_data.csv"),
-                "reference_metrics_json": read(base / "reference/reference_metrics.json"),
-            }
+        reference = {
+            "analysis_data_csv": read(base / "input/analysis_data.csv"),
+            "reference_metrics_json": read(base / "reference/reference_metrics.json"),
+        }
         for label in ("kimi_after", "codex_after_repair"):
             record = selection[label]
             run = Path(record["run_json"])
             read(run)
             assert protected[run] == record["sha256"]
             output = run.parent / "output"
-            if scorer is healthcare:
-                arguments = {
-                    "candidate_files": {
-                        name: read(output / name) for name in scorer.REQUIRED_OUTPUT_FILES
-                    },
-                    "reference_files": reference,
-                }
-            else:
-                arguments = reference | {
-                    argument: read(output / filename)
-                    for argument, filename in OBERMEYER_FILES.items()
-                }
+            arguments = reference | {
+                argument: read(output / filename)
+                for argument, filename in OBERMEYER_FILES.items()
+            }
             bundles[task, label] = arguments
     yield bundles
     for path, expected in protected.items():
@@ -144,34 +125,17 @@ def replay_evaluate(task, arguments):
         "logger": logging.getLogger(__name__),
         "TASK_NAME": task,
         "score_output_bundle": scorer.score_output_bundle,
-        "REQUIRED_OUTPUT_FILES": healthcare.REQUIRED_OUTPUT_FILES,
-        "REQUIRED_REFERENCE_FILES": healthcare.REQUIRED_REFERENCE_FILES,
     }
     exec(compile(ast.fix_missing_locations(module), str(path), "exec"), namespace)
-    if scorer is healthcare:
-        namespace["check_figure_interpretation"] = AsyncMock(
-            return_value={"passed": True, "reason": "isolated numerical replay"}
-        )
-        files = {
-            f"/{prefix}/{name}": value
-            for prefix, key in (("candidate", "candidate_files"), ("reference", "reference_files"))
-            for name, value in arguments[key].items()
-        }
-        metadata = {
-            "remote_output_dir": "/candidate",
-            "reference_dir": "/reference",
-            "reference_answers_file": "/reference/audit_answers.json",
-        }
-    else:
-        files = {f"/{argument}": value for argument, value in arguments.items()}
-        metadata = {
-            "variant_name": "base",
-            "predictions_output": "/predictions_csv",
-            "baseline_report_output": "/baseline_report_md",
-            "revised_report_output": "/revised_report_md",
-            "analysis_data_file": "/analysis_data_csv",
-            "reference_metrics_file": "/reference_metrics_json",
-        }
+    files = {f"/{argument}": value for argument, value in arguments.items()}
+    metadata = {
+        "variant_name": "base",
+        "predictions_output": "/predictions_csv",
+        "baseline_report_output": "/baseline_report_md",
+        "revised_report_output": "/revised_report_md",
+        "analysis_data_file": "/analysis_data_csv",
+        "reference_metrics_file": "/reference_metrics_json",
+    }
 
     class ReadOnlySession:
         async def file_exists(self, filename):
@@ -183,18 +147,12 @@ def replay_evaluate(task, arguments):
         async def read_file(self, filename):
             return files[filename]
 
-        async def run_command(self, command, **kwargs):
-            assert "find /candidate -type f" in command
-            return {"return_code": 0, "stdout": "\n".join(arguments["candidate_files"])}
-
     return asyncio.run(namespace["evaluate"](SimpleNamespace(metadata=metadata), ReadOnlySession()))
 
 
 @pytest.mark.parametrize(
     "task,label,before,after",
     [
-        ("healthcare_bias_audit_27a_public_replication_v1", "kimi_after", 0.0, 1.0),
-        ("healthcare_bias_audit_27a_public_replication_v1", "codex_after_repair", 1.0, 1.0),
         ("obermeyer_bias_reproduction", "kimi_after", 0.821642, 0.847642),
         ("obermeyer_bias_reproduction", "codex_after_repair", 0.838072, 0.838072),
     ],
@@ -220,119 +178,14 @@ def test_selected_native_artifact_replay(artifacts, frozen_scorers, task, label,
         } == {key: value for key, value in original.details.items() if key != "report_component"}
 
 
-@pytest.mark.parametrize(
-    "key,value",
-    [
-        ("figure1b_percentile_97_before", 0.177),
-        ("figure1b_percentile_97_after", 0.465),
-        ("figure1b_percentile_97_after", 0.59),
-        ("figure1b_percentile_97_ratio", 0.59),
-        ("table3_predicted_health_in_cost_bin_frac_black", 0.177),
-        ("table3_highest_predicted_cost_frac_black", 0.177),
-    ],
-)
-def test_wrong_public_numeric_answers_remain_rejected(artifacts, key, value):
-    original = artifacts["healthcare_bias_audit_27a_public_replication_v1", "codex_after_repair"]
-    candidate = dict(original["candidate_files"])
-    answers = json.loads(candidate["audit_answers.json"])
-    assert answers[key] != value
-    answers[key] = value
-    candidate["audit_answers.json"] = json.dumps(answers)
-    result = healthcare.score_output_bundle(
-        candidate_files=candidate, reference_files=original["reference_files"]
-    )
-    assert result.score == 0
-    assert result.reason == "audit_answers.json: value_mismatch"
-    assert result.details["key"] == key
-
-
-def test_public_memo_needs_no_private_comparison_or_random_keyword(artifacts):
-    arguments = artifacts["healthcare_bias_audit_27a_public_replication_v1", "kimi_after"]
-    candidate = dict(arguments["candidate_files"])
-    answers = json.loads(candidate["audit_answers.json"])
-    candidate["audit_memo.md"] = (
-        "This public synthetic replication shows that cost-based ranking understates clinical "
-        "need for Black patients. Cost is an imperfect proxy for need because access and "
-        "utilization affect spending. Diagnosis of the mechanism matters: retraining on the "
-        "same cost label does not resolve the target mismatch. Prefer a need-based label for "
-        "allocation. "
-        f"Figure 1b at percentile 97 gives {answers['figure1b_percentile_97_before']} before "
-        f"and {answers['figure1b_percentile_97_after']} after the swap. "
-        "Table 3: sampling within predicted-cost bins gives 17.7% Black, compared with "
-        f"{answers['table3_predicted_health_in_cost_bin_frac_black']} for predicted health "
-        "within those bins."
-    )
-    reference = {
-        name: arguments["reference_files"][name] for name in healthcare.REQUIRED_REFERENCE_FILES
-    }
-    result = healthcare.score_output_bundle(
-        candidate_files=candidate, reference_files=reference
-    )
-    assert result.score == 1.0, result.to_dict()
-    assert replay_evaluate(
-        "healthcare_bias_audit_27a_public_replication_v1",
-        {"candidate_files": candidate, "reference_files": reference},
-    ) == [1.0]
-
-
-@pytest.mark.parametrize("candidate_fraction", ["", "0.115", "0.224"])
-def test_sampling_fraction_must_match_the_public_table3_cell(artifacts, candidate_fraction):
-    arguments = artifacts["healthcare_bias_audit_27a_public_replication_v1", "kimi_after"]
-    candidate = dict(arguments["candidate_files"])
-    filename = "results/table3.csv"
-    reader = csv.DictReader(io.StringIO(candidate[filename]))
-    rows = list(reader)
-    row = next(row for row in rows if row["population"] == "Random, in predicted cost bin")
-    assert float(row["frac_black"]) == pytest.approx(0.177)
-    row["frac_black"] = candidate_fraction
-    stream = io.StringIO()
-    writer = csv.DictWriter(stream, fieldnames=reader.fieldnames)
-    writer.writeheader()
-    writer.writerows(rows)
-    candidate[filename] = stream.getvalue()
-    result = healthcare.score_output_bundle(
-        candidate_files=candidate, reference_files=arguments["reference_files"]
-    )
-    assert result.score == 0
-    assert result.reason == "results/table3.csv: value_mismatch"
-    assert result.details["column"] == "frac_black"
-
-
-@pytest.mark.parametrize(
-    "memo,reason",
-    [
-        ("", "empty"),
-        ("The public synthetic data does not understate need for Black patients.", "incorrect_conclusion"),
-        ("Keep the cost-based label for allocation.", "incorrect_recommendation"),
-    ],
-)
-def test_empty_or_opposite_healthcare_memos_remain_rejected(artifacts, memo, reason):
-    arguments = artifacts["healthcare_bias_audit_27a_public_replication_v1", "kimi_after"]
-    candidate = arguments["candidate_files"] | {"audit_memo.md": memo}
-    result = healthcare.score_output_bundle(
-        candidate_files=candidate, reference_files=arguments["reference_files"]
-    )
-    assert result.score == 0
-    assert result.reason == "audit_memo.md: " + reason
-
-
 @pytest.mark.parametrize("task", list(TASKS))
 def test_off_topic_reports_do_not_get_report_credit(artifacts, task):
     original = artifacts[task, "codex_after_repair"]
     off_topic = "Office relocation memo: arrange packing, desk delivery, and building access."
-    if TASKS[task] is healthcare:
-        arguments = original | {
-            "candidate_files": original["candidate_files"] | {"audit_memo.md": off_topic}
-        }
-        result = healthcare.score_output_bundle(**arguments)
-        assert result.score == 0
-        assert result.reason == "audit_memo.md: missing_required_content"
-    else:
-        arguments = original | {"baseline_report_md": off_topic, "revised_report_md": off_topic}
-        result = obermeyer.score_output_bundle(**arguments)
-        assert result.details["report_component"] == 0
-        assert result.score == 0.638072
-
+    arguments = original | {"baseline_report_md": off_topic, "revised_report_md": off_topic}
+    result = obermeyer.score_output_bundle(**arguments)
+    assert result.details["report_component"] == 0
+    assert result.score == 0.638072
 
 def test_obermeyer_equivalences_are_grounded_in_cohort_and_outcome():
     literal = REVISED_REPORT.replace("non-Black patients", "White patients").replace(
@@ -375,21 +228,6 @@ def test_actual_obermeyer_numeric_gates_are_unchanged(artifacts):
     result = obermeyer.score_output_bundle(**(original | {"predictions_csv": buffer.getvalue()}))
     assert result.score == 0
     assert result.reason == "baseline_score_must_equal_observed_risk_score_t"
-
-
-def test_actual_healthcare_numeric_cells_are_still_required(artifacts):
-    original = artifacts["healthcare_bias_audit_27a_public_replication_v1", "kimi_after"]
-    candidate = dict(original["candidate_files"])
-    historical_table = (
-        RELEASE / "validation-checks/healthcare-bias-r02-old-table3-from-terminal.csv"
-    )
-    candidate["results/table3.csv"] = historical_table.read_text()
-    assert candidate["results/table3.csv"] != original["candidate_files"]["results/table3.csv"]
-    result = healthcare.score_output_bundle(
-        candidate_files=candidate, reference_files=original["reference_files"]
-    )
-    assert result.score == 0
-    assert result.reason == "results/table3.csv: value_mismatch"
 
 
 def test_actual_obermeyer_report_uses_the_documented_equivalent_concepts(artifacts):

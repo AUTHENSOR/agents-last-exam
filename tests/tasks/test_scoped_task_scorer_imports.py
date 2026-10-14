@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 TASK_MODULES = (
-    "tasks.life_sciences.genomic_interval_processing_1",
     "tasks.health_medicine.obermeyer_bias_reproduction",
     "tasks.computing_math.dit_pipeline_cfg_alignment_fid_256_001",
 )
@@ -29,11 +28,7 @@ before = list(sys.path)
 for task in {module_order!r}:
     main = importlib.import_module(task + '.main')
     scorer = importlib.import_module(task + '.scripts.score_outputs')
-    if task.endswith('genomic_interval_processing_1'):
-        assert main.score_submission is scorer.score_submission
-        assert main.INPUT_BED_FILES is scorer.INPUT_BED_FILES
-        assert main.REQUIRED_FILES is scorer.REQUIRED_FILES
-    elif task.endswith('obermeyer_bias_reproduction'):
+    if task.endswith('obermeyer_bias_reproduction'):
         assert main.score_output_bundle is scorer.score_output_bundle
         assert main.ScoreResult is scorer.ScoreResult
     else:
@@ -66,9 +61,7 @@ for task in {module_order!r}:
     loader = TaskLoader(str(Path(*task.split('.'))))
     loaded = loader.load()
     main = loader._load_module()
-    if task.endswith('genomic_interval_processing_1'):
-        score = main.score_submission
-    elif task.endswith('obermeyer_bias_reproduction'):
+    if task.endswith('obermeyer_bias_reproduction'):
         score = main.score_output_bundle
     else:
         score = main.score_submission_text

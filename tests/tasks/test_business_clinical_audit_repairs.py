@@ -1,5 +1,3 @@
-import csv
-import io
 import json
 from pathlib import Path
 from unittest.mock import Mock
@@ -14,7 +12,6 @@ from tasks.business_finance.saas_onepager_brand_refresh_instance_1 import main a
 from tasks.business_finance.saas_onepager_brand_refresh_instance_1.scripts import (
     score_onepager_v2 as visual,
 )
-from tasks.health_medicine.crf_sdtm_mapping_4.scripts import score_crf_sdtm_mapping as mapping
 from tasks.health_medicine.prostate_imrt_matrad_reproduction.scripts import evaluate as prostate
 from tasks.utils import evaluation
 
@@ -123,117 +120,6 @@ def test_missing_declared_fixture_outcome_remains_an_evaluator_error():
     result = crisis_result(failing_api("unused"), runtime.Bindings(xml))
     assert "no declared outcome" in result["evaluation_error"]
     assert "failure" not in result
-
-
-LABEL_CASES = [
-    ("11:7", "AE", "AESER", "Is the adverse event ser ous?", "Is the adverse event serious?"),
-    (
-        "11:7:1",
-        "AE",
-        "AESCONG",
-        "Is this ser ous event associated with congenital anomaly or birth defect?",
-        "Is this serious event associated with congenital anomaly or birth defect?",
-    ),
-    (
-        "11:7:4",
-        "AE",
-        "AESDISAB",
-        "Did this serious event result in persistent or significant disabil ty/incapac ty?",
-        "Did this serious event result in persistent or significant disability/incapacity?",
-    ),
-    (
-        "11:7:5",
-        "AE",
-        "AESLIFE",
-        "Is this ser ous event life threatening?",
-        "Is this serious event life threatening?",
-    ),
-    (
-        "11:7:6",
-        "AE",
-        "AESMIE",
-        "Other med cally important ser ous event",
-        "Other medically important serious event",
-    ),
-    (
-        "12:14",
-        "SUPPAE",
-        "AESUBJDC",
-        "D d the adverse event cause the subject to be discontinued from the study?",
-        "Did the adverse event cause the subject to be discontinued from the study?",
-    ),
-    (
-        "12:15",
-        "AE",
-        "AEREFID",
-        "Ser ous Adverse Event Number:",
-        "Serious Adverse Event Number: For Pfizer Use Only",
-    ),
-    ("12:19", "AE", "AEDECOD", "D ctionary-Derived Term", "Dictionary-Derived Term"),
-]
-
-
-def mapping_csv(row):
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=mapping.VARIANT_SPECS["base"]["columns"])
-    writer.writeheader()
-    writer.writerow(row)
-    return output.getvalue()
-
-
-@pytest.fixture(params=LABEL_CASES)
-def label_pair(request):
-    locator, dataset, variable, printed, repaired = request.param
-    reference = {
-        "crf_form": "ADVERSE EVENT REPORT (AE)",
-        "crf_field_label": repaired,
-        "crf_item_or_placeholder": "aCRF:" + locator,
-        "sdtm_dataset": dataset,
-        "sdtm_variable": variable,
-        "role": "Qualifier",
-        "origin": "CRF",
-        "mapping_rule": f"Copy the documented source value to {variable}.",
-        "controlled_terms_or_expected_values": "N;Y",
-        "goes_to_suppqual": "YES" if dataset == "SUPPAE" else "NO",
-        "notes": "",
-    }
-    return reference, {**reference, "crf_field_label": printed}
-
-
-def test_verified_literal_and_repaired_labels_both_receive_credit(label_pair):
-    reference, printed = label_pair
-    for candidate in (reference, printed):
-        result = mapping.score_mapping_csv(
-            mapping_csv(candidate), mapping_csv(reference), variant="base"
-        )
-        assert result.strict_score == result.score == 1
-
-
-@pytest.mark.parametrize(
-    "mutation",
-    ["wrong_page", "wrong_target", "wrong_terms", "wrong_origin", "new_typo", "wrong_reference"],
-)
-def test_literal_label_aliases_do_not_hide_mapping_errors(label_pair, mutation):
-    reference, candidate = label_pair
-    if mutation == "wrong_page":
-        locator = candidate["crf_item_or_placeholder"]
-        candidate["crf_item_or_placeholder"] = locator.replace(":11:", ":99:").replace(
-            ":12:", ":99:"
-        )
-    elif mutation == "wrong_target":
-        candidate["sdtm_variable"] = "AEWRONG"
-    elif mutation == "wrong_terms":
-        candidate["controlled_terms_or_expected_values"] = "Y"
-    elif mutation == "wrong_origin":
-        candidate["origin"] = "Assigned"
-    elif mutation == "new_typo":
-        candidate["crf_field_label"] += " unrelated"
-    else:
-        reference["crf_field_label"] = "A different question"
-    result = mapping.score_mapping_csv(
-        mapping_csv(candidate), mapping_csv(reference), variant="base"
-    )
-    assert result.score < 1 and result.strict_score == 0
 
 
 @pytest.fixture

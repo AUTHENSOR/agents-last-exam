@@ -8,7 +8,7 @@ import re
 import shlex
 from functools import lru_cache
 
-from tasks.life_sciences.amber_minimization_script_prep_instance_1.scripts.workflow_parser import (
+from tasks.life_sciences.amber_three_stage_mmgbsa_workflow_instance_1.scripts.workflow_parser import (
     ContractError,
     Shell,
     leap_commands,

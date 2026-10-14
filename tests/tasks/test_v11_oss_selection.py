@@ -8,9 +8,38 @@ from ale_run.tasks.loader import TaskLoader
 
 ROOT = Path(__file__).resolve().parents[2]
 RETIRED_TASKS = {
-    "engineering/mold-flow",
+    "agriculture_env/crop_rotation_d02",
+    "agriculture_env/ndvi_zonal_statistics_d02",
+    "business_finance/financial_stmt_reconstruction_aapl_fy2024",
+    "business_finance/pe_screening_memo_1",
+    "computing_math/branch_bound_atsp",
+    "computing_math/ising_post_measurement_1",
+    "computing_math/k3_abelian_extensions",
+    "computing_math/os_log_permission_guard_v1",
     "education_info/homework_grading_numerical_pdes_instance_02",
+    "education_info/moodle_gradebook_closeout_reconciliation",
+    "engineering/abb_irb6700_asset_to_urdf_instance_1",
+    "engineering/mold-flow",
+    "engineering/sanding_performance_scoring_instance_1",
+    "health_medicine/Clinical_Variant_Annotation",
+    "health_medicine/crf_sdtm_mapping_4",
+    "health_medicine/epidemiology_forecast",
+    "health_medicine/healthcare_bias_audit_27a_public_replication_v1",
+    "health_medicine/healthcare_variant_annotation_pipeline",
+    "health_medicine/replicate_paper_1",
+    "health_medicine/scene3_skullstrip_qc",
+    "life_sciences/amber_minimization_script_prep_instance_1",
+    "life_sciences/gene_expression_differential_analysis_functional_enrichment_analysis_1",
+    "life_sciences/genomic_interval_processing_1",
+    "life_sciences/hg002_chr22_germline_variant_pipeline",
+    "life_sciences/protein_function_annotation_instance_1",
+    "life_sciences/pseudotime_de",
+    "life_sciences/rgi_mcr1_colistin_v2",
+    "physical_sciences/adapt_vqe_molecular_energy",
+    "transport_safety/capacitated_vehicle_routing_problems",
+    "visual_media/inkscape_cultural_poster_design",
 }
+
 OSS_VARIANTS = {
     "engineering/2d_drawings_to_3d_building_model": "base",
     "engineering/cailian_road_highway_alignment_2": "base",
@@ -27,7 +56,6 @@ DOCKER_EXCLUSIONS = {
     "computing_math/k8s_migration_1",
     "business_finance/bpmn_supply_disruption_l3",
     "business_finance/bpmn_category_governance_restructuring_l3",
-    "health_medicine/scene3_skullstrip_qc",
     "psychology_neuro/scene2_resample",
 }
 CPU_EXCLUSIONS = {
@@ -61,7 +89,7 @@ def test_curated_lists_only_select_existing_unique_tasks(selections):
 
 def test_release_selection_matches_task_routing(selections):
     full = set(selections["full.txt"])
-    assert len(full) == 150
+    assert len(full) == 122
     assert full == set(selections["full/overall.txt"])
     published = json.loads((ROOT / "tasks/published_tasks.json").read_text())["published"]
     assert full == set(published)
@@ -75,12 +103,12 @@ def test_release_selection_matches_task_routing(selections):
     }
     assert set(snapshots.values()) <= {"cpu-free", "cpu-free-ubuntu", "gpu-free"}
     linux = {task_id for task_id, snapshot in snapshots.items() if snapshot == "cpu-free-ubuntu"}
-    assert len(linux) == 110
+    assert len(linux) == 86
     assert set(selections["ale_cli.txt"]) == linux
     assert set(selections["docker_support.txt"]) == linux - DOCKER_EXCLUSIONS
-    assert len(selections["docker_support.txt"]) == 101
+    assert len(selections["docker_support.txt"]) == 78
     assert set(selections["cpu.txt"]) == full - CPU_EXCLUSIONS
-    assert len(selections["cpu.txt"]) == 145
+    assert len(selections["cpu.txt"]) == 117
     assert set(selections["qemu_excluded.txt"]) == CPU_EXCLUSIONS
     for name in ("cpu.txt", "full.txt", "ale_cli.txt"):
         assert OSS_VARIANTS.keys() <= set(selections[name]), name
@@ -92,16 +120,16 @@ def test_release_selection_matches_task_routing(selections):
 @pytest.mark.parametrize(
     "track,count,variants",
     [
-        ("overall", 150, set(OSS_VARIANTS)),
-        ("near-term", 66, set()),
+        ("overall", 122, set(OSS_VARIANTS)),
+        ("near-term", 45, set()),
         (
             "full-spectrum",
-            54,
+            46,
             {"engineering/cailian_road_highway_alignment_2", "visual_media/music_transcription"},
         ),
         (
             "last-exam",
-            37,
+            36,
             {
                 "engineering/2d_drawings_to_3d_building_model",
                 "engineering/gcode",
@@ -129,7 +157,6 @@ def test_difficulty_tracks_cover_complete_release(selections):
     "task_id,track",
     [
         ("business_finance/odoo", "full-spectrum"),
-        ("visual_media/inkscape_cultural_poster_design", "full-spectrum"),
         ("engineering/robotics_blender_tabletop_reconstruction", "last-exam"),
         ("visual_media/atlas_outpost_graybox_navigation", "last-exam"),
         ("visual_media/human_mesh_animation_reproduction", "last-exam"),
@@ -163,6 +190,6 @@ def test_retired_task_is_not_published_discoverable_or_loadable(task_id):
         for path in (ROOT / "tasks").glob("*/*/main.py")
     }
     assert task_id not in discovered
-    assert not (ROOT / "tasks" / task_id / "task_card.json").exists()
+    assert not (ROOT / "tasks" / task_id).exists()
     with pytest.raises(FileNotFoundError, match="main.py not found"):
         TaskLoader(str(ROOT / "tasks" / task_id))

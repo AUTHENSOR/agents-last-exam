@@ -35,6 +35,8 @@ contain the main website wrapper or its deployment configuration.
 ## Content layout
 
 - Repository Markdown provides practical setup and run commands.
+- `docs/releases/v1.md` covers original v1 code, legacy images and fresh logs;
+  it is linked prominently from the overview and release configuration.
 - `pages/providers.html` and provider pages teach setup; `pages/configure.html`
   is the configuration reference, including v1.1 scope and asset pins.
 - `pages/run.html` covers launch, revision-aware resume, the short v1 log
@@ -42,8 +44,8 @@ contain the main website wrapper or its deployment configuration.
 - Introduction, extension, and reference pages explain the framework contracts.
 
 Update both Markdown and HTML when commands, task lists, image pins, resume,
-or output defaults change. Keep one v1.1 release guide and reuse the configure
-and run pages for the website.
+or output defaults change. Keep one v1.1 release guide plus the original v1
+run guide, and reuse the configure and run pages for the website.
 
 ## How it's wired
 

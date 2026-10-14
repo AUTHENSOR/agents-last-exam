@@ -28,9 +28,9 @@ def test_selected_task_lists_match_release(assets):
         tasks = [line.strip() for line in payload.decode().splitlines() if line.strip() and not line.lstrip().startswith("#")]
         assert hashlib.sha256(payload).hexdigest() == entry["sha256"]
         assert len(tasks) == entry["count"]
-    assert assets["selected_task_lists"]["selected_tasks/full.txt"]["count"] == 150
-    assert assets["selected_task_lists"]["selected_tasks/cpu.txt"]["count"] == 145
-    assert assets["selected_task_lists"]["selected_tasks/docker_support.txt"]["count"] == 101
+    assert assets["selected_task_lists"]["selected_tasks/full.txt"]["count"] == 122
+    assert assets["selected_task_lists"]["selected_tasks/cpu.txt"]["count"] == 117
+    assert assets["selected_task_lists"]["selected_tasks/docker_support.txt"]["count"] == 78
 
 
 def test_manifest_describes_one_public_release(assets):
@@ -102,5 +102,19 @@ def test_manifest_preserves_gates_and_has_no_private_paths(assets):
     assert "gcs_all" not in assets["task_data"]
     for forbidden in ("/home/allennie", "private-vm-transfer", "Bearer ", "api_key", "password"):
         assert forbidden not in text
-    assert assets["task_data"]["selected_tasks"] == 150
+    assert assets["task_data"]["selected_tasks"] == 122
     assert assets["task_data"]["public_reference_format"] == "header-encrypted reference.7z"
+
+
+def test_inactive_payloads_are_not_selected(assets):
+    selected = set(json.loads((ROOT / "tasks/published_tasks.json").read_text())["published"])
+    data = assets["task_data"]
+    archive_inactive = set(data["archive_inactive_tasks"])
+    image_inactive = set(data["image_inactive_tasks"])
+    assert len(archive_inactive) == 28
+    assert image_inactive == archive_inactive | {
+        "education_info/homework_grading_numerical_pdes_instance_02"
+    }
+    assert selected.isdisjoint(image_inactive)
+    assert data["archive_task_coverage"] == len(selected | archive_inactive) == 150
+    assert data["image_task_coverage"] == len(selected | image_inactive) == 151

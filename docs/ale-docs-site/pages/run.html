@@ -76,7 +76,8 @@ max_attempts: 3</code></pre>
       First select the matching <a href="/pages/configure.html#v1-1">v1.1 code,
       images, data, and task list</a>. In custom QEMU profiles, rename
       <code>hf_revision</code> to <code>image_revision</code>, keeping the same
-      pin. Stop the experiment before upgrading logs. The helper previews by
+      pin. The upgrade retains 66 unchanged tasks, reruns 56 modified tasks,
+      and removes 30 retired tasks. Stop the experiment before upgrading logs. The helper previews by
       default; applying removes changed or retired task logs and stamps retained, unmodified legacy
       logs with the current revision. Back up logs you want to preserve first.
       Then resume with the same experiment name and <code>output.root</code>:
@@ -85,6 +86,12 @@ max_attempts: 3</code></pre>
 uv run python scripts/upgrade_v1_logs.py LOG_ROOT --apply
 uv run python -m ale_run run my_experiment.yaml</code></pre>
     <p>For an older or custom v1 baseline, add <code>--from-commit COMMIT</code> to the helper.</p>
+    <p>
+      To run v1 instead, follow
+      <a href="https://github.com/rdi-berkeley/agents-last-exam/blob/main/docs/releases/v1.md">Run original v1</a>.
+      Use the tagged code, legacy images and fresh logs; do not reuse v1.1
+      results or apply the log upgrade helper to that run.
+    </p>
 
     <h2 id="output-path">Choose where task output goes</h2>
     <p>

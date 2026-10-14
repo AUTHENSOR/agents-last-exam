@@ -2,7 +2,6 @@ visual_media/uv_reproduction
 business_finance/ar_full_1500
 visual_media/project_migration
 life_sciences/idp_ensemble_scoring
-life_sciences/pseudotime_de
 physical_sciences/computational_materials_science
 physical_sciences/mose2_bse_absorption_soc
 physical_sciences/silicon_bse_absorption

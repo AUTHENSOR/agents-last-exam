@@ -1,6 +1,5 @@
 from dataclasses import asdict
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -14,13 +13,12 @@ from ale_run.tasks.loader import TaskLoader
 @pytest.mark.parametrize("agent_name", ["codex", "kimi-code"])
 @pytest.mark.parametrize("os_type", ["linux", "windows"])
 def test_aliased_task_keeps_canonical_identity_out_of_guest_spec(
-    tmp_path, monkeypatch, agent_name, os_type
+    tmp_path, monkeypatch, aliased_task_root, agent_name, os_type
 ):
     monkeypatch.setattr("ale_run.orchestration.lifecycle._collect_env_passthrough", dict)
-    task_root = Path(__file__).resolve().parents[2] / "tasks/life_sciences/rgi_mcr1_colistin_v2"
-    task_data = TaskLoader(str(task_root)).load()["task_data"]
+    task_data = TaskLoader(str(aliased_task_root)).load()["task_data"]
     sandbox = SandboxHandle(
-        id="ale-qemu-life-sciences-rgi-mcr1-colistin-v2-fixture",
+        id="ale-qemu-fixture-domain-canonical-answer-task-fixture",
         endpoint="http://127.0.0.1:55000",
         os=os_type,
         work_dir_base="/home/user/.ale" if os_type == "linux" else r"C:\Users\User\.ale",
@@ -29,19 +27,19 @@ def test_aliased_task_keeps_canonical_identity_out_of_guest_spec(
         python="/usr/bin/python3",
         mcp_server_dir="/opt/cua",
         metadata={
-            "container_name": "ale-qemu-life-sciences-rgi-mcr1-colistin-v2-fixture",
-            "slot_root": "/host/slots/rgi_mcr1_colistin_v2-fixture",
-            "overlay_qcow2": "/host/slots/rgi_mcr1_colistin_v2-fixture/data.qcow2",
+            "container_name": "ale-qemu-fixture-domain-canonical-answer-task-fixture",
+            "slot_root": "/host/slots/canonical_answer_task-fixture",
+            "overlay_qcow2": "/host/slots/canonical_answer_task-fixture/data.qcow2",
             "image_provenance": {"revision": "image-fixture"},
         },
     )
     original = asdict(sandbox)
     config = SimpleNamespace(model="fixture")
-    host_artifacts = tmp_path / "rgi_mcr1_colistin_v2" / "origin_log"
+    host_artifacts = tmp_path / "canonical_answer_task" / "origin_log"
     kwargs = dict(
         executor_type="sandbox", env=SimpleNamespace(sandbox=sandbox),
         config=config, agent_name=agent_name,
-        run_id="codex__fixture__life_sciences__rgi_mcr1_colistin_v2__v0__fixture",
+        run_id="codex__fixture__fixture_domain__canonical_answer_task__v0__fixture",
         host_artifacts_dir=host_artifacts,
     )
     executor = _build_executor(**kwargs, sandbox_task_name=task_data.sandbox_task_name)
@@ -49,8 +47,8 @@ def test_aliased_task_keeps_canonical_identity_out_of_guest_spec(
         "sandbox_kwargs": _sandbox_to_kwargs(executor.sandbox),
         "work_dir": executor.work_dir,
     })
-    assert "mcr1" not in payload.casefold()
-    assert "colistin" not in payload.casefold()
+    assert "canonical_answer" not in payload.casefold()
+    assert "canonical_answer_task" not in payload.casefold()
     assert executor.sandbox.endpoint == sandbox.endpoint
     assert executor.sandbox.task_data_root == sandbox.task_data_root
     assert executor.sandbox.python == sandbox.python

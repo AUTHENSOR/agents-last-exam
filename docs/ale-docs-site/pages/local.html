@@ -21,7 +21,7 @@
     <div class="note">
       <div class="note-title">Supported, CPU-only</div>
       Use <code>configs/environments/qemu.yaml</code> with
-      <code>selected_tasks/cpu.txt</code> for 145 selected CPU tasks.
+      <code>selected_tasks/cpu.txt</code> for 117 selected CPU tasks.
       GPU passthrough is outside the current provider scope.
     </div>
 
@@ -95,9 +95,11 @@ ps -eo pid,comm,args | rg '[q]emu-system'</code></pre>
       shipped profile; see <a href="/pages/configure.html#v1-1">release pins</a>.
     </p>
     <p>
-      The standalone data release covers 150 active tasks. VM disks retain an
-      inactive PDE data payload with no corresponding task implementation or
-      selection-list entry; it does not add a benchmark task.
+      Published payloads are unchanged: standalone data packages 150 tasks
+      (28 inactive), and VM disks package 151 (29 inactive, including PDE).
+      Inactive payloads are not selected or counted among the 122 active tasks.
+      To run legacy disks with v1 code and fresh logs, use the
+      <a href="https://github.com/rdi-berkeley/agents-last-exam/blob/main/docs/releases/v1.md">original v1 guide</a>.
     </p>
 
     <h2>Disk sources</h2>
@@ -144,8 +146,8 @@ uv run python -m ale_run run local_vm_demo.yaml</code></pre>
 
     <h2>Task coverage</h2>
     <p>
-      <code>cpu.txt</code> contains 145 CPU tasks:
-      all 110 <code>cpu-free-ubuntu</code> tasks and 35 <code>cpu-free</code>
+      <code>cpu.txt</code> contains 117 CPU tasks:
+      all 86 <code>cpu-free-ubuntu</code> tasks and 31 <code>cpu-free</code>
       Windows tasks. The five selected Windows GPU tasks require the GCloud
       GPU profile and are excluded from QEMU.
     </p>

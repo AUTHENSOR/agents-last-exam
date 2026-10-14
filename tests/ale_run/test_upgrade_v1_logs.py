@@ -403,9 +403,11 @@ def test_release_manifest_covers_current_selection_repairs_and_retirement():
     manifest = upgrade.load_manifest(upgrade.MANIFEST)
     tasks = manifest["tasks"]
     assert manifest["release"] == "v1.1"
+    assert manifest["v1_tag"] == "v1"
+    assert manifest["v1_commit"] == "d9abc0734b56ea34116c5bfcbdd0b808269ab9e2"
     assert "release_revision" not in manifest
-    assert sum(entry["action"] == "rerun" for entry in tasks.values()) == 71
-    assert sum(entry["action"] == "retain" for entry in tasks.values()) == 79
+    assert sum(entry["action"] == "rerun" for entry in tasks.values()) == 56
+    assert sum(entry["action"] == "retain" for entry in tasks.values()) == 66
     categories = manifest["category_definitions"]
     counts = {category: 0 for category in categories}
     for entry in tasks.values():
@@ -415,10 +417,10 @@ def test_release_manifest_covers_current_selection_repairs_and_retirement():
         assert bool(changes) == (entry["action"] == "rerun")
         for category in changes:
             counts[category] += 1
-    assert counts == {"instruction": 58, "verification": 56, "environment": 37, "data": 30}
-    assert manifest["change_summary"] == {"updated_tasks": 71, **counts}
+    assert counts == {"instruction": 46, "verification": 43, "environment": 31, "data": 23}
+    assert manifest["change_summary"] == {"updated_tasks": 56, **counts}
     assets = json.loads((ROOT / "releases/v1.1/assets.json").read_text())
-    assert assets["scope"]["updated_tasks"] == 71
+    assert assets["scope"]["updated_tasks"] == 56
     assert assets["scope"]["task_change_categories"] == counts
     for task in (
         "engineering/2d_drawings_to_3d_building_model",
@@ -428,9 +430,7 @@ def test_release_manifest_covers_current_selection_repairs_and_retirement():
         "visual_media/music_transcription",
         "visual_media/project_migration",
         "engineering/chisel_verilog_alignment_seq_1",
-        "computing_math/ising_post_measurement_1",
         "computing_math/mp_checkpoint_consolidation_v2",
-        "computing_math/os_log_permission_guard_v1",
         "health_medicine/causal_ihdp_ite_estimation_6a_v1",
         "health_medicine/flusight_offline_hosp_forecast_2024_12_14",
         "life_sciences/zdock_hiv_dimer_interface_scoring_v1",
@@ -438,7 +438,6 @@ def test_release_manifest_covers_current_selection_repairs_and_retirement():
         assert tasks[task]["action"] == "rerun"
     additions = {
         "business_finance/equity_research_summary": {"instruction", "verification"},
-        "business_finance/pe_screening_memo_1": {"verification"},
         "business_finance/saas_onepager_brand_refresh_instance_1": {"instruction", "verification"},
         "business_finance/sec_10k_financial_parsing": {"instruction", "environment"},
         "computing_math/k8s_migration_1": {"instruction", "verification"},
@@ -465,11 +464,9 @@ def test_release_manifest_covers_current_selection_repairs_and_retirement():
         for line in (ROOT / "selected_tasks/full.txt").read_text().splitlines()
         if line and not line.startswith("#")
     }
-    retired = {
-        "engineering/mold-flow",
-        "education_info/homework_grading_numerical_pdes_instance_02",
-    }
-    assert len(selected) == 150
+    retired = {task for task, entry in tasks.items() if entry["action"] == "retire"}
+    assert len(retired) == 30
+    assert len(selected) == 122
     assert len(tasks) == 152
     assert set(tasks) == selected | retired
     assert set(assets["scope"]["retired_tasks"]) == retired
@@ -479,7 +476,6 @@ def test_release_manifest_covers_current_selection_repairs_and_retirement():
         assert tasks[task]["reasons"]
     assert tasks["visual_media/atlas_outpost_graybox_navigation"]["action"] == "retain"
     for task in (
-        "engineering/abb_irb6700_asset_to_urdf_instance_1",
         "health_medicine/wsi_tumor_localization_1",
         "life_sciences/tms_marrow_cell_type_annotation_instance_1",
         "physical_sciences/lenacapavir_sar_table2_extraction",
@@ -535,7 +531,7 @@ def clean_retained_tasks(tmp_path, tracked_task_files):
     return repository
 
 
-def test_full_v1_fixture_migrates_152_logs_and_resumes_only_71(clean_retained_tasks, tmp_path):
+def test_full_v1_fixture_migrates_152_logs_and_resumes_only_56(clean_retained_tasks, tmp_path):
     from ale_run.cli import _filter_resume
     from ale_run.orchestration.experiment_spec import AgentSpec, RunUnit
 
@@ -557,10 +553,10 @@ def test_full_v1_fixture_migrates_152_logs_and_resumes_only_71(clean_retained_ta
             )
     operations = upgrade.build_plan(logs, repository=clean_retained_tasks)
     assert len(operations) == 152
-    assert sum(operation.action == "retain" for operation in operations) == 79
+    assert sum(operation.action == "retain" for operation in operations) == 66
     assert all(path.exists() for path in originals)
     upgrade.apply_plan(operations)
-    assert len(list(logs.glob("*/*/*/v*/*/run.json"))) == 79
+    assert len(list(logs.glob("*/*/*/v*/*/run.json"))) == 66
     for task_id, entry in manifest["tasks"].items():
         directory = logs / "agent/model" / task_id.replace("/", "__")
         assert directory.exists() == (entry["action"] == "retain")
@@ -573,7 +569,7 @@ def test_full_v1_fixture_migrates_152_logs_and_resumes_only_71(clean_retained_ta
         remaining = _filter_resume(units, logs)
     finally:
         os.chdir(previous_cwd)
-    assert len(remaining) == 71
+    assert len(remaining) == 56
     assert {unit.task_path for unit in remaining} == {
         task_id for task_id, entry in manifest["tasks"].items() if entry["action"] == "rerun"
     }

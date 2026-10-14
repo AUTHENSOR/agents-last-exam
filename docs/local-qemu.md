@@ -1,6 +1,6 @@
 # Local QEMU/KVM provider
 
-Run the 145 CPU tasks in `selected_tasks/cpu.txt` using the v1.1 profile and
+Run the 117 CPU tasks in `selected_tasks/cpu.txt` using the v1.1 profile and
 frozen task source with matching image and data pins.
 The [website tutorial](https://agents-last-exam.org/docs?p=pages/local.html)
 explains the provider; the commands and maintainer details follow here.
@@ -31,9 +31,10 @@ of the environment configuration.
 
 Use `configs/environments/qemu.yaml` as the starting configuration, preserving
 each snapshot's `image_revision` pin from the [release manifest](../releases/v1.1/assets.json).
-The standalone data release covers 150 active tasks. VM disks retain an inactive
-PDE data payload with no corresponding task implementation or selection-list
-entry; see the [release guide](releases/v1.1.md).
+Published payloads are unchanged: standalone data packages 150 tasks (28
+inactive), and VM disks package 151 (29 inactive, including PDE). Inactive
+payloads are not selected; v1.1 has 122 active tasks. See the
+[release guide](releases/v1.1.md) or [original v1 setup](releases/v1.md).
 
 ## Check capacity and run
 

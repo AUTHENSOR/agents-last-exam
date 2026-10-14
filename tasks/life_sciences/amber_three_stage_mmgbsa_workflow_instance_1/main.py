@@ -9,7 +9,7 @@ from typing import Any
 import cua_bench as cb
 
 from tasks.common_setup import BaseTaskSetup
-from tasks.life_sciences.amber_minimization_script_prep_instance_1.scripts.workflow_parser import (
+from tasks.life_sciences.amber_three_stage_mmgbsa_workflow_instance_1.scripts.workflow_parser import (
     SHELL_CONTRACT,
 )
 from tasks.life_sciences.amber_three_stage_mmgbsa_workflow_instance_1.scripts.verify_submission import (
