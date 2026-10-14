@@ -2,7 +2,7 @@
   "schema_version": 1,
   "release": "v1.1",
   "baseline_commit": "2d4d2205c255e2f7dcf568baa1f0c108dfaa3d73",
-  "release_commit": "a03744d0b9cf40dbbd95d5c7290317a2980d5262",
+  "release_commit": "e28ff0b22827ba6d0f5657a8794f1ef4599e6a5a",
   "baseline_policy": "Repair accounting starts at source snapshot 2d4d220. The v1 tag preserves main immediately before v1.1. Use --from-commit for older snapshots. Retention records reuse eligibility, not original run provenance.",
   "hash_policy": "Complete frozen task folders, including task-card edits, executable modes and symlink targets, hashed by ale_run.tasks.revision.task_revision. Generated caches are excluded. Nonrelease evidence is preserved outside task folders; required untracked source files belong to the frozen publication set. Public checkout and runtime folders must have identical task hashes.",
   "revision_status": "frozen",
