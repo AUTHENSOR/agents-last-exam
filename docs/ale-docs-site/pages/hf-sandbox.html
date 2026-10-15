@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HF Sandboxes | ALE Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+  <article class="article">
+    <h1>HF Sandboxes</h1>
+    <p class="lede">
+      Run the supported Ubuntu subset as one fresh Hugging Face Job per run
+      unit. The orchestrator, local authentication proxy and local executors
+      still run on your host. No local Docker daemon is needed for the task
+      container.
+    </p>
+
+    <div class="note">
+      <div class="note-title">Supported Linux subset</div>
+      Start with the CPU Linux task list from the
+      <a href="/pages/local-docker.html">local Docker provider</a>.
+      Container compatibility does not establish HF compatibility. This
+      provider has not passed v1.1 acceptance on HF infrastructure.
+    </div>
+
+    <h2>What runs where</h2>
+    <p>
+      The <code>hfsandbox</code> provider starts one HF Job per run unit from
+      <code>agentslastexam/ale-ubuntu22-docker</code>, then talks to it over
+      the job's exposed port. The orchestrator process itself needs only an HF
+      token and outbound HTTPS — it can run on a laptop, a CI runner, or
+      another HF Job.
+    </p>
+
+    <h2>Host requirements</h2>
+    <ul>
+      <li>An HF token with the <code>jobs</code> scope (<code>hf auth login</code>, or <code>HF_TOKEN</code> in the environment).</li>
+      <li>Approved access to the gated task-data dataset on Hugging Face.</li>
+      <li>A private HF bucket to hold the extracted task-data archive.</li>
+      <li>A persistent-disk host for data preparation, a running Python orchestrator, and a local authentication proxy per active job.</li>
+      <li>A separate, inference-only <code>HF_INFERENCE_TOKEN</code> for the example agent. Never pass the Jobs or bucket token to the solver.</li>
+      <li>A Hugging Face account authorized to run paid Jobs, with sufficient credits, hardware quota, and private-bucket access.</li>
+    </ul>
+    <pre><code>hf auth whoami
+uv sync --all-packages</code></pre>
+
+    <h2>Fetch task data once</h2>
+    <p>
+      The image ships without task inputs or references. Request access to the
+      <a href="https://huggingface.co/datasets/agents-last-exam/agents-last-exam-data-archive">ALE
+      task-data archive</a>, then:
+    </p>
+    <pre><code>hf buckets create &lt;namespace&gt;/&lt;bucket&gt; --private
+hf buckets sync &lt;encrypted-reference-tree&gt; hf://buckets/&lt;namespace&gt;/&lt;bucket&gt;</code></pre>
+    <p>
+      Prepare the tree on verified disk-backed storage, not host
+      <code>/tmp</code> or another tmpfs. It must contain
+      <code>&lt;domain&gt;/&lt;task&gt;/&lt;variant&gt;/{input,software,reference.7z}</code>.
+      Encrypt reference archives and their headers before uploading. Keep
+      <code>ALE_REFERENCE_ARCHIVE_PASSWORD</code> only on the orchestrator until
+      evaluation. Do not mount the plaintext archive extraction tree: every
+      agent can read every mounted file, even on a read-only bucket. Startup
+      rejects plaintext <code>reference</code> directories and symlinks across
+      configured mounts, including references for other tasks.
+    </p>
+
+    <h2>Use the shipped environment</h2>
+    <p>
+      Point <code>volumes</code> at that bucket in
+      <code>configs/environments/hfsandbox.yaml</code>:
+    </p>
+    <pre><code>volumes:
+  - hf://buckets/&lt;namespace&gt;/&lt;bucket&gt;:/mnt/ale-task-data:ro
+task_data_source: mounted:/mnt/ale-task-data</code></pre>
+    <p>
+      then run the premade example, which wires
+      <code>configs/agents/qwen_code_hf.yaml</code> (Qwen3.5-9B via the HF
+      router) to this environment for
+      <code>demo/tool_smoke</code> only:
+    </p>
+    <pre><code>uv run python -m ale_run run example_hfsandbox_exp.yaml</code></pre>
+    <p>
+      Screenshot tasks need an image-capable model and route. GLM-5.3 Chat
+      rejected image content in the 2026-10-15 preflight; do not use that
+      text-only route for visual tasks. The Qwen example route was not
+      validated by the Pi runs below. Check endpoint image support and
+      availability before allocating a Job.
+    </p>
+    <p>
+      On 2026-10-15 Pi with text-only GLM-5.3 via Z.ai completed
+      <code>demo/readfile_secret</code> unassisted with score 1.0
+      through the real HF provider, executor, task setup/evaluation and cleanup,
+      using a temporary 4.02 GB desktop image, not the release image.
+      Actual native read/write calls and the generated output were independently
+      checked. Mounted hello also scored 1.0, but required operator display
+      recovery and browser cleanup. The official image timed out during its
+      cold pull without reaching RUNNING. These results do not establish
+      official-image or unassisted GUI acceptance; the shipped environment
+      still selects the official release image.
+    </p>
+    <p>
+      For data-less tasks only (<code>demo/tool_smoke</code> and
+      <code>demo/seecheck</code>, plus setup-generated
+      <code>demo/readfile_secret</code>) you
+      can drop <code>volumes</code> and use
+      <code>task_data_source: baked_in_sandbox</code> instead. The image must
+      still contain an empty <code>input/</code> directory at
+      <code>&lt;task_data_root&gt;/demo/&lt;task&gt;/base/input</code>.
+      Tasks without reference data need no <code>reference.7z</code>.
+    </p>
+
+    <h2>Resource sizing</h2>
+    <p>
+      Set <code>flavor</code> to any value <code>hf jobs hardware</code>
+      lists. Before allocating, the provider checks the live flavor CPU/RAM
+      against the task card and ephemeral capacity against
+      <code>min_storage_gb</code> (default 200 GB). Some tasks require 16 vCPU and approximately
+      60 GB RAM, so one fixed 8-vCPU flavor cannot cover the whole list.
+      Verify ephemeral storage can hold the unpacked image and task working
+      data; compressed image size is not sufficient. Do not assume 50 GB is
+      enough for the release image. The v1.1 manifest contains 37.39 GB of
+      compressed layers. It includes all layers of the previously verified
+      88.29 GB unpacked image, so its unpacked layer sum is at least that
+      large, before pull overhead or task scratch space. The live
+      hardware API on 2026-10-15 reported only 50 GB for both
+      <code>cpu-basic</code> and <code>cpu-upgrade</code>. The preset uses
+      <code>cpu-xl</code> (16 vCPU, 124 GB RAM, 1000 GB ephemeral storage),
+      the least expensive CPU-only flavor meeting the 200 GB floor in that
+      API response. Recheck hardware and prices before running. Override
+      <code>min_storage_gb</code> only after verifying the alternative image's
+      unpacked size, pull overhead and task scratch requirement.
+      The example starts at
+      concurrency 1. Cold pulls count toward <code>start_timeout</code>;
+      <code>job_timeout</code> caps Jobs. <code>idle_timeout</code> applies only
+      to the optional Sandbox transport, not Jobs.
+    </p>
+
+    <h2>Output options</h2>
+    <p>
+      The example uses <code>output_path: null</code> to avoid bulk collection.
+      Run metadata and trajectories are still recorded. Choosing
+      <code>output_path: local</code> copies produced files through the exposed port. See
+      <a href="/pages/run.html#output-path">Choose where task output goes</a>
+      for other destinations.
+    </p>
+
+    <h2>Current limits</h2>
+    <ul>
+      <li>Linux tasks only, same subset as the local Docker provider.</li>
+      <li>The sandbox shares the job container's kernel and is not VM-isolated.</li>
+      <li><code>transport: sandbox</code> requires a Hub build that actually exports <code>Sandbox</code>. The inspected installed Hub 1.20.1 does not. Prefer <code>transport: job</code>; a generic 1.x version requirement is not sufficient.</li>
+      <li>Rootless-Docker exclusions, GPU, Windows, nested runtimes, systemd and cgroup-dependent tasks are not covered by this profile.</li>
+      <li><code>cleanup_mode: keep</code> leaves the remote resource billable but closes the local proxy. Retain its owner/job ID for manual inspection and cancellation.</li>
+    </ul>
+
+    <div class="note">
+      <div class="note-title">Next</div>
+      Follow <a href="/pages/configure.html">Configure an experiment</a>, then
+      validate the matrix with <code>--dry-run</code>.
+    </div>
+  </article>
+
+  <script src="/assets/nav.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

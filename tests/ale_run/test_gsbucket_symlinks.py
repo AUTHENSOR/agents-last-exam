@@ -356,7 +356,12 @@ async def test_baked_input_never_contacts_gcs_or_restores_links(staging_sandbox,
 @pytest.mark.asyncio
 async def test_missing_input_creates_empty_dirs_without_restore(staging_sandbox, task_data):
     sandbox = staging_sandbox
-    sandbox.run_command.return_value = subprocess.CompletedProcess([], 1, "", "")
+    sandbox.run_command.return_value = subprocess.CompletedProcess(
+        [],
+        1,
+        "",
+        "CommandException: One or more URLs matched no objects.\n",
+    )
     assert (await gsbucket.stage_input(sandbox, task_data, source=SOURCE))["staged"] == []
     assert sandbox.run_command.await_count == 2
     sandbox.mkdir.assert_any_await(f"/data/{TASK}/input")
@@ -396,7 +401,12 @@ async def test_reference_wipes_and_normalizes_before_restore(staging_sandbox, ta
 @pytest.mark.asyncio
 async def test_missing_reference_preserves_existing_skip(staging_sandbox, task_data):
     sandbox = staging_sandbox
-    sandbox.run_command.return_value = subprocess.CompletedProcess([], 1, "", "")
+    sandbox.run_command.return_value = subprocess.CompletedProcess(
+        [],
+        1,
+        "",
+        "CommandException: One or more URLs matched no objects.\n",
+    )
     assert await gsbucket.stage_reference(sandbox, task_data, source=SOURCE) == {
         "skipped": True,
         "reason": "no_reference_on_gcs",

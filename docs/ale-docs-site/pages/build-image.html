@@ -128,7 +128,7 @@ env/verify_task_env.sh path/to/task_card.json path/to/task_base_dir</code></pre>
         </tr>
         <tr>
           <td><strong>Image <code>python</code></strong></td>
-          <td>Inside the sandbox (Linux <code>/opt/ale-run/.venv</code>, Windows system Python).</td>
+          <td>Inside the sandbox (Linux <code>/opt/ale-run/.venv</code>, Windows <code>C:\ale-run\.venv</code>).</td>
           <td>The in-sandbox framework entry point and agent hosting. <code>install_agent_deps()</code> pip-installs each agent's declared packages into <em>this</em> interpreter at launch.</td>
           <td>Yes — this is the <code>python</code> field your module declares.</td>
         </tr>
@@ -142,7 +142,7 @@ env/verify_task_env.sh path/to/task_card.json path/to/task_base_dir</code></pre>
     </table>
     <p>
       The one you bake is the image <code>python</code>: keep it user-writable and
-      minimal — <code>pydantic</code>, <code>pip</code>, and what
+      minimal: <code>pydantic</code>, <code>requests</code>, <code>pip</code>, and what
       <code>install_agent_deps()</code> adds — not a home for task libraries.
     </p>
     <div class="note">
@@ -154,7 +154,72 @@ env/verify_task_env.sh path/to/task_card.json path/to/task_base_dir</code></pre>
       <code>evaluator_env</code> venv, most lean on the image Python.
     </div>
 
-    <h2>1. Boot a builder VM</h2>
+    <h2 id="base">Stock-OS prerequisites and runtime bootstrap</h2>
+    <p>
+      First create the sandbox account (<code>user</code> on Linux,
+      <code>User</code> on Windows) and an autologin desktop. Linux needs
+      <code>uv</code> and an X11 session; Windows needs Python 3.12 with the
+      <code>py</code> launcher. Run these commands as the sandbox user, with sudo
+      access on Linux or elevated PowerShell on Windows.
+    </p>
+    <h3>Framework Python</h3>
+    <pre><code># Linux: create a user-writable, pip-enabled runtime
+sudo install -d -o user -g "$(id -gn user)" /opt/ale-run
+uv venv --python 3.12 --seed /opt/ale-run/.venv
+uv pip install --python /opt/ale-run/.venv/bin/python pydantic requests
+/opt/ale-run/.venv/bin/python -c 'import pip, pydantic, requests'</code></pre>
+    <pre><code># Windows PowerShell
+py -3.12 -m venv C:\ale-run\.venv
+if ($LASTEXITCODE -ne 0) { throw 'Framework venv creation failed' }
+&amp; C:\ale-run\.venv\Scripts\python.exe -m pip install pydantic requests
+if ($LASTEXITCODE -ne 0) { throw 'Framework dependency installation failed' }
+&amp; C:\ale-run\.venv\Scripts\python.exe -c "import pip, pydantic, requests"
+if ($LASTEXITCODE -ne 0) { throw 'Framework import check failed' }</code></pre>
+    <h3>Node</h3>
+    <p>
+      Install the official Node 24.12.0 x64 distribution, verifying its
+      <a href="https://nodejs.org/dist/v24.12.0/SHASUMS256.txt">checksum</a>.
+      On Linux unpack under <code>/usr/local</code>, stripping the archive's
+      top-level directory; on Windows unpack under <code>C:\Users\User</code>.
+      Verify the paths the image modules declare:
+    </p>
+    <pre><code># Linux
+/usr/local/bin/node --version</code></pre>
+    <pre><code># Windows PowerShell
+&amp; 'C:\Users\User\node-v24.12.0-win-x64\node.exe' --version</code></pre>
+    <h3>CUA boot services</h3>
+    <p>
+      CUA runs separately from the framework Python, on port 5000. The v1.1
+      demo images report <code>cua-computer-server</code> 0.3.39; retain the
+      actual server source and dependency pins when reproducing it.
+      <code>env/packages-linux/cua-server-venv/install.sh</code> creates only an
+      interpreter, not the server or its services. Inspect the existing boot
+      resources on a published-image builder:
+    </p>
+    <pre><code># Linux: service environment includes DISPLAY and XAUTHORITY
+systemctl cat cua-computer-server.service \
+  cua-computer-server-health.service cua-computer-server-health.timer
+cat /usr/local/bin/cua-computer-server-health.sh</code></pre>
+    <pre><code># Windows PowerShell
+Export-ScheduledTask -TaskName CuaServer-agenthle
+Get-Content C:\Users\User\scripts\cua_watchdog.ps1</code></pre>
+    <p>
+      Linux's service runs as <code>user</code> with process restart and a
+      30-second health timer. Windows's task uses <code>InteractiveToken</code>,
+      999 failure restarts at one-minute intervals, and the watchdog above.
+      These scripts live in the published images, not this repository; adapt
+      desktop authentication and interpreter paths to your own installation.
+    </p>
+    <p>
+      This section supplies prerequisites and runtime bootstrap, not a complete
+      stock-OS installer. Published-image demos, service/path inspection and
+      isolated runtime checks validate the documented components, not a stock-OS
+      rebuild. To customize the existing images, continue at
+      <a href="#builder">step 1</a>; with your own desktop/CUA setup already
+      working, continue at <a href="#software">step 2</a>.
+    </p>
+
+    <h2 id="builder">1. Boot a builder VM</h2>
     <p>
       Start from the matching published base so the CUA server, node, Python, and
       path conventions are already in place. Create a VM from the base image and
@@ -172,7 +237,7 @@ gcloud compute instances create ale-builder \
       manifest and connect over RDP.
     </p>
 
-    <h2>2. Install and verify the software</h2>
+    <h2 id="software">2. Install and verify the software</h2>
     <p>
       Copy the <code>env/</code> tree to the builder and run the installers for
       each task card you want the image to cover. On Linux:

@@ -40,6 +40,13 @@ uv run python -m ale_run run my_experiment.yaml \
       latency, and LLM rate limits can all become the practical bound.
     </p>
 
+    <p>
+      When the agent's main session exits, supervised background tools may
+      finish within the remaining agent time budget. Timeout or cancellation
+      stops the supervised process tree. ALE confirms process exit before
+      staging or decrypting reference data and starting evaluation.
+    </p>
+
     <h2>Resume and retry failed units</h2>
     <pre><code>auto_resume: true
 max_attempts: 3</code></pre>

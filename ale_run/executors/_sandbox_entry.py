@@ -9,7 +9,7 @@ that directory on ``PYTHONPATH``.
 Reads ``<spec_path>`` (a JSON file the host wrote into the sandbox's
 work_dir), reconstructs config + sandbox handle + a :class:`LocalExecutor`
 in-sandbox, supervises the deployer in a contained worker, and writes
-``_result.json`` + ``_done.marker`` only after stopping all descendants.
+``_result.json`` + ``_done.marker`` only after all descendants have exited.
 
 Symmetric with :mod:`_docker_entry`. No cua ``python_exec`` involved —
 this is a normal Python process spawned via ``setsid`` (linux) or
@@ -47,6 +47,15 @@ class _LinuxProcessTree:
         enabled = ctypes.c_int()
         if libc.prctl(37, ctypes.byref(enabled), 0, 0, 0) != 0 or enabled.value != 1:
             raise RuntimeError("child subreaper unavailable")
+
+    def is_empty(self) -> bool:
+        while True:
+            try:
+                child_pid, _status = os.waitpid(-1, os.WNOHANG)
+            except ChildProcessError:
+                return True
+            if child_pid == 0:
+                return False
 
     def stop(self) -> None:
         deadline = time.monotonic() + _PROCESS_STOP_TIMEOUT_S
@@ -149,18 +158,21 @@ class _WindowsJob:
         finally:
             self.kernel.CloseHandle(process)
 
+    def is_empty(self) -> bool:
+        accounting = _JobAccounting()
+        if not self.kernel.QueryInformationJobObject(
+            self.handle, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None,
+        ):
+            raise ctypes.WinError()
+        return accounting.ActiveProcesses == 0
+
     def stop(self) -> None:
         try:
             if not self.kernel.TerminateJobObject(self.handle, 1):
                 raise ctypes.WinError()
             deadline = time.monotonic() + _PROCESS_STOP_TIMEOUT_S
             while time.monotonic() < deadline:
-                accounting = _JobAccounting()
-                if not self.kernel.QueryInformationJobObject(
-                    self.handle, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None,
-                ):
-                    raise ctypes.WinError()
-                if accounting.ActiveProcesses == 0:
+                if self.is_empty():
                     return
                 time.sleep(0.02)
             raise RuntimeError("solver processes remain in Windows Job Object")
@@ -169,12 +181,15 @@ class _WindowsJob:
 
 
 def supervise(spec_path: Path, spec: dict) -> dict:
-    """Run a gated worker; publish stop evidence only after draining descendants."""
+    """Wait for the worker and its descendants within one shared time budget."""
     work_dir = Path(spec["work_dir"])
     token = spec["run_token"]
     worker = None
     process_tree = None
     stopped = False
+    drained = False
+    started = time.monotonic()
+    deadline = started + float(spec["timeout_s"])
     out = {"ok": False, "status": "failed", "error": "solver did not start"}
     try:
         if sys.platform == "linux":
@@ -197,17 +212,23 @@ def supervise(spec_path: Path, spec: dict) -> dict:
                 process_tree.assign(worker.pid)
             worker.stdin.write(b"1")
             worker.stdin.close()
-            deadline = time.monotonic() + float(spec["timeout_s"])
-            while worker.poll() is None:
+            worker_finished = False
+            while True:
+                if not worker_finished and worker.poll() is not None:
+                    out = json.loads((work_dir / "_worker_result.json").read_text())
+                    worker_finished = True
+                    if out.get("status") == "timeout":
+                        break
                 if stop_path.exists() and stop_path.read_text() == token:
-                    out = {"ok": False, "status": "failed", "error": "solver stop requested"}
+                    out.update(ok=False, status="failed", error="solver stop requested")
                     break
                 if time.monotonic() >= deadline:
-                    out = {"ok": False, "status": "timeout", "error": "solver budget exceeded"}
+                    out.update(ok=False, status="timeout", error="solver budget exceeded")
+                    break
+                if worker_finished and process_tree.is_empty():
+                    drained = True
                     break
                 time.sleep(0.05)
-            else:
-                out = json.loads((work_dir / "_worker_result.json").read_text())
     except BaseException as exc:
         logger.exception("sandbox supervisor failed")
         out = {"ok": False, "status": "failed", "error": str(exc),
@@ -221,7 +242,10 @@ def supervise(spec_path: Path, spec: dict) -> dict:
                     worker.kill()
                 worker.wait(timeout=_PROCESS_STOP_TIMEOUT_S)
             if process_tree is not None:
-                process_tree.stop()
+                if not drained:
+                    process_tree.stop()
+                elif isinstance(process_tree, _WindowsJob):
+                    process_tree.kernel.CloseHandle(process_tree.handle)
             stopped = True
         except BaseException as exc:
             logger.exception("sandbox process cleanup failed")
@@ -231,6 +255,7 @@ def supervise(spec_path: Path, spec: dict) -> dict:
         temporary = report_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(report))
         temporary.replace(report_path)
+    out["duration_s"] = time.monotonic() - started
     return out
 
 

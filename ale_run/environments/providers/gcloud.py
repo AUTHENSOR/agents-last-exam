@@ -885,7 +885,33 @@ class GcloudProvider(Provider):
                     break
                 last_stderr = stderr
                 if not _is_zone_capacity_error(stderr):
-                    raise RuntimeError(f"gcloud instances create failed: {stderr}")
+                    regional_missing = re.search(
+                        rf"machine type with name ['\"]?{re.escape(machine)}['\"]? "
+                        rf"does not exist in zone ['\"]?{re.escape(zone)}(?:['\".]|$)",
+                        stderr, re.IGNORECASE,
+                    ) or re.search(
+                        rf"/zones/{re.escape(zone)}/machineTypes/{re.escape(machine)}['\"] "
+                        r"was not found", stderr, re.IGNORECASE,
+                    )
+                    if not regional_missing:
+                        raise RuntimeError(f"gcloud instances create failed: {stderr}")
+                    listed_rc, listed_out, listed_err = await _run_gcloud(
+                        "compute", "machine-types", "list", f"--filter=name={machine}",
+                        "--limit=1", "--format=json", project=self._cfg.project,
+                    )
+                    if listed_rc:
+                        raise RuntimeError(
+                            f"gcloud machine-type availability check failed: {listed_err}"
+                        )
+                    try:
+                        available = json.loads(listed_out)
+                    except ValueError as exc:
+                        raise RuntimeError("gcloud machine-type availability returned invalid JSON") from exc
+                    if not isinstance(available, list) or not any(
+                        isinstance(item, dict) and item.get("name") == machine
+                        for item in available
+                    ):
+                        raise RuntimeError(f"gcloud instances create failed: {stderr}")
             if stdout:
                 break
         else:

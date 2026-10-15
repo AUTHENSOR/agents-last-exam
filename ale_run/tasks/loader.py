@@ -27,7 +27,7 @@ from ..base_interface import TaskDataSpec
 # delay the import to the one site that needs it, and only when the
 # task_card actually declares a machineType.
 
-__all__ = ["TaskDataSpec", "TaskLoader"]
+__all__ = ["TaskDataSpec", "TaskLoader", "list_tasks"]
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,21 @@ _TASK_LOCAL_MODULE_NAMES = (
 )
 
 _TASK_IMPORT_LOCK = threading.Lock()
+
+
+def list_tasks(root: str | os.PathLike[str] = "tasks") -> list[str]:
+    """Return sorted task paths without importing task modules or following directory links."""
+    root_path = Path(root)
+    if not root_path.is_dir():
+        return []
+    found = []
+    for dirpath, dirnames, filenames in os.walk(root_path):
+        dirnames[:] = sorted(
+            name for name in dirnames if not name.startswith(".") and name != "__pycache__"
+        )
+        if "main.py" in filenames and Path(dirpath) != root_path:
+            found.append(Path(dirpath).relative_to(root_path).as_posix())
+    return sorted(found)
 
 
 # ======================================================================

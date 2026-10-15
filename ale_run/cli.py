@@ -8,11 +8,11 @@ import logging
 import sys
 from pathlib import Path
 
-import ale_run as ale
 from .orchestration import Runner
 from .orchestration.config_loader import load_experiment
 from .orchestration.experiment_spec import RunUnit
 from .orchestration.run_writer import slug_agent, slug_model, slug_task
+from .tasks import list_tasks
 from .tasks.revision import task_revision
 
 logger = logging.getLogger(__name__)
@@ -102,11 +102,29 @@ async def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
-    envs = ale.list_envs()
-    print(f"discoverable tasks ({len(envs)}):")
-    for e in envs:
-        print(f"  {e}")
+    root = Path("tasks")
+    tasks = list_tasks(root)
+    print(f"discoverable tasks ({len(tasks)}):")
+    for task in tasks:
+        line = f"  {task}"
+        if args.verbose:
+            card = _read_task_card(root / task)
+            vm = card.get("vm")
+            snapshot = vm.get("snapshot") if isinstance(vm, dict) else None
+            snapshot = snapshot or card.get("snapshot") or card.get("vm_category") or ""
+            title = card.get("title") or ""
+            line = f"  {task:<50} {str(snapshot):<18} {title}"
+        print(line)
     return 0
+
+
+def _read_task_card(task_dir: Path) -> dict:
+    """Best-effort read of task_card.json; return {} if missing or malformed."""
+    try:
+        data = json.loads((task_dir / "task_card.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 # =============================================================================

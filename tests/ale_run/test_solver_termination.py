@@ -31,6 +31,7 @@ class TreeConfig:
     mode: str = "completed"
     model: str = "test"
     orphan: bool = True
+    tool_duration_s: float = 0.5
 
 
 class TreeDeployer:
@@ -51,10 +52,11 @@ class TreeDeployer:
             "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
             f"work = pathlib.Path({str(work)!r})\n"
             "(work / 'grandchild.pid').write_text(str(os.getpid()))\n"
-            "deadline = time.monotonic() + 30\n"
+            f"deadline = time.monotonic() + {self.executor.config.tool_duration_s!r}\n"
             "while time.monotonic() < deadline:\n"
             "    with (work / 'heartbeat').open('a') as stream: stream.write('x')\n"
             "    time.sleep(0.02)\n"
+            "(work / 'output.complete').write_text('finished')\n"
         )
         child = (
             "import os, pathlib, subprocess, sys, time\n"
@@ -64,7 +66,7 @@ class TreeDeployer:
             "start_new_session=True, stdin=subprocess.DEVNULL)\n"
         )
         if not self.executor.config.orphan:
-            child += "time.sleep(30)\n"
+            child += f"time.sleep({self.executor.config.tool_duration_s!r})\n"
         tool = subprocess.Popen(
             [sys.executable, "-c", child], start_new_session=True,
             stdin=subprocess.DEVNULL,
@@ -171,6 +173,8 @@ async def test_real_detached_orphan_cleanup(contained_executor, mode, orphan):
     executor = contained_executor
     executor.config.mode = mode
     executor.config.orphan = orphan
+    if mode == "hang":
+        executor.config.tool_duration_s = 30
     unrelated = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     try:
         result = await asyncio.wait_for(executor.run_deployer(
@@ -178,6 +182,7 @@ async def test_real_detached_orphan_cleanup(contained_executor, mode, orphan):
         ), timeout=12)
         assert result.status == ("timeout" if mode == "hang" else mode)
         assert_tree_stopped(executor)
+        assert (Path(executor.work_dir) / "output.complete").exists() is (mode != "hang")
         if executor.type == "local":
             assert (Path(executor.work_dir) / "endpoint").read_text() == executor.sandbox.endpoint
         assert unrelated.poll() is None
@@ -187,6 +192,40 @@ async def test_real_detached_orphan_cleanup(contained_executor, mode, orphan):
     finally:
         unrelated.kill()
         unrelated.wait(timeout=5)
+
+
+@pytest.mark.parametrize("orphan", [False, True])
+async def test_background_output_finishes_after_session_exit(contained_executor, orphan):
+    executor = contained_executor
+    executor.config.orphan = orphan
+    executor.config.tool_duration_s = 1.5
+    work = Path(executor.work_dir)
+    operation = asyncio.create_task(executor.run_deployer(
+        deployer_cls=TreeDeployer, prompt="test", timeout_s=8,
+    ))
+    async with asyncio.timeout(5):
+        while not (work / "_worker_result.json").exists():
+            await asyncio.sleep(0.01)
+    assert not operation.done()
+    assert not (work / "_done.marker").exists()
+    assert not (work / "_stop.request").exists()
+    assert (await operation).status == "completed"
+    assert (work / "output.complete").read_text() == "finished"
+    assert_tree_stopped(executor)
+
+
+async def test_background_work_uses_remaining_budget(contained_executor):
+    executor = contained_executor
+    executor.config.tool_duration_s = 30
+    work = Path(executor.work_dir)
+    started = time.monotonic()
+    result = await asyncio.wait_for(executor.run_deployer(
+        deployer_cls=TreeDeployer, prompt="test", timeout_s=5,
+    ), timeout=9)
+    assert result.status == "timeout"
+    assert time.monotonic() - started >= 5
+    assert not (work / "output.complete").exists()
+    assert_tree_stopped(executor)
 
 
 @pytest.mark.parametrize("cause", ["cancel", "outer_timeout", "transport_error"])
@@ -575,6 +614,44 @@ def test_windows_job_live_descendants_fail_closed(windows_kernel, monkeypatch):
     windows_kernel.CloseHandle.assert_called_once()
 
 
+@pytest.mark.parametrize("finishes", [False, True])
+def test_windows_waits_for_background_work_before_cleanup(
+    tmp_path, monkeypatch, windows_kernel, finishes,
+):
+    worker = Mock(pid=123)
+    worker.poll.return_value = 0
+    worker.stdin.closed = False
+    elapsed = [0.0]
+    monkeypatch.setattr(entry.sys, "platform", "win32")
+    monkeypatch.setattr(entry.subprocess, "Popen", Mock(return_value=worker))
+    monkeypatch.setattr(entry.time, "monotonic", lambda: elapsed[0])
+    monkeypatch.setattr(entry.time, "sleep", lambda delay: elapsed.__setitem__(0, elapsed[0] + delay))
+
+    def query(handle, info_class, pointer, size, returned):
+        pointer._obj.ActiveProcesses = int(
+            not windows_kernel.TerminateJobObject.called
+            and (not finishes or elapsed[0] < 0.5)
+        )
+        return 1
+
+    windows_kernel.QueryInformationJobObject.side_effect = query
+    (tmp_path / "_worker_result.json").write_text(json.dumps({
+        "ok": True, "status": "completed", "transcript_path": "transcript.jsonl",
+    }))
+    out = entry.supervise(tmp_path / "_spec.json", {
+        "work_dir": str(tmp_path), "run_token": "test", "timeout_s": 1,
+    })
+    assert out["status"] == ("completed" if finishes else "timeout")
+    assert out["transcript_path"] == "transcript.jsonl"
+    if finishes:
+        assert 0.5 <= out["duration_s"] < 1
+        windows_kernel.TerminateJobObject.assert_not_called()
+    else:
+        assert out["duration_s"] >= 1
+        windows_kernel.TerminateJobObject.assert_called_once()
+    assert json.loads((tmp_path / "_stopped.json").read_text())["stopped"] is True
+
+
 @pytest.mark.parametrize("assignment_fails", [False, True])
 def test_windows_worker_is_gated_until_job_assignment(
     tmp_path, monkeypatch, windows_kernel, assignment_fails,
@@ -598,5 +675,8 @@ def test_windows_worker_is_gated_until_job_assignment(
     })
     assert events == (["assigned"] if assignment_fails else ["assigned", "released"])
     assert out["ok"] is not assignment_fails
-    windows_kernel.TerminateJobObject.assert_called_once()
+    if assignment_fails:
+        windows_kernel.TerminateJobObject.assert_called_once()
+    else:
+        windows_kernel.TerminateJobObject.assert_not_called()
     assert json.loads((tmp_path / "_stopped.json").read_text())["stopped"] is True

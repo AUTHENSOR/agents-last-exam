@@ -1,7 +1,7 @@
 """Task data staging — pull input/software onto the sandbox, ready
 reference for evaluation.
 
-Three sources today, dispatched on yaml ``artifacts_path.task_data_source``:
+Sources dispatched on yaml ``task_data_source``:
 
   ``"baked_in_sandbox"``     image already has input/ + reference.7z baked in
   ``"gs://<bucket>"``        rsync from a GCS bucket
@@ -10,6 +10,8 @@ Three sources today, dispatched on yaml ``artifacts_path.task_data_source``:
   ``"hf://<dataset>"``       HuggingFace Hub (STUB)
   ``"local:<host_dir>"``     docker cp from a HOST dir — for a data-less Docker
                              image: input before the agent, reference before eval
+  ``"mounted:<sandbox_dir>"`` copy from a sandbox-visible mount; references
+                             must be encrypted while the solver is running
 
 Each backend module exposes two coroutines:
 
@@ -58,11 +60,14 @@ def select(task_data_source: str):
     if task_data_source.startswith("local:"):
         from . import local_host
         return local_host
+    if task_data_source.startswith("mounted:"):
+        from . import mounted
+        return mounted
     raise ValueError(
         f"unknown task_data_source {task_data_source!r}: expected "
         f"'baked_in_sandbox', 'gs://<bucket>', 's3://<bucket>', 'oss://<bucket>', "
         f"'hf://<dataset>', "
-        f"or 'local:<dir>'"
+        f"'local:<dir>', or 'mounted:<sandbox_dir>'"
     )
 
 

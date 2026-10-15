@@ -49,7 +49,7 @@ across all 55 subdomains and reference integrations for several agent harnesses.
 
 ---
 
-## Quick start
+## Quick Start
 
 **ALE v1.1 selects 122 active tasks after 30 retirements.** The upgrade scope
 marks 56 active tasks for rerun and 66 for retention. Updates cover instructions
@@ -110,7 +110,7 @@ Have a question or run into an issue? [**Join our Discord**](https://discord.gg/
 
 ---
 
-## How ALE works
+## How ALE Works
 
 ALE targets **frontier agent systems** — a harness orchestrating a foundation
 model, carrying its own action loop, tools, memory, and sub-agents. Rather than

@@ -46,9 +46,10 @@ async def stage_input(
             staged.append(f"{subdir}(baked)")
             continue
         src = f"{gcs_prefix}/{subdir}"
+        exists = await _gcs_exists(sandbox, src)
         if versioned:
             await sandbox.rm([dst])
-        if not await _gcs_exists(sandbox, src):
+        if not exists:
             await sandbox.mkdir(dst)
             continue
         r = await sandbox.run_command(_rsync_cmd(sandbox, src, dst), timeout=600)
@@ -289,13 +290,59 @@ async def _has_baked_files(sandbox: SandboxHandle, path: str) -> bool:
 
 
 async def _gcs_exists(sandbox: SandboxHandle, gs_url: str) -> bool:
+    """Return False only for a confirmed missing GCS object or prefix."""
     gsutil = _gsutil(sandbox)
+    quoted_url = shell_q(sandbox, gs_url if sandbox.is_linux else gs_url.replace("'", "''"))
     cmd = (
-        f"{gsutil} ls '{gs_url}' >/dev/null 2>&1" if sandbox.is_linux
-        else f"powershell -NoProfile -Command \"{gsutil} ls '{gs_url}' *> $null; exit $LASTEXITCODE\""
+        f"{gsutil} ls {quoted_url}" if sandbox.is_linux
+        else 'powershell -NoProfile -Command "'
+        f"$ErrorActionPreference = 'Stop'; {gsutil} ls {quoted_url}; exit $LASTEXITCODE\""
     )
-    r = await sandbox.run_command(cmd, timeout=30)
-    return r.returncode == 0
+    try:
+        result = await sandbox.run_command(cmd, timeout=30)
+    except Exception as error:
+        diagnostic = f"{type(error).__name__}: {error}"
+        stderr = getattr(error, "stderr", None)
+        if stderr:
+            diagnostic += "\n" + (
+                stderr.decode(errors="replace") if isinstance(stderr, bytes) else str(stderr)
+            )
+        diagnostic = _sanitize_gcs_diagnostic(diagnostic)
+        raise RuntimeError(f"gsutil ls failed for {gs_url}: {diagnostic}") from None
+    if result.returncode == 0:
+        return True
+    stderr = (result.stderr or "").strip()
+    stdout = (result.stdout or "").strip()
+    if result.returncode == 1 and not stdout and (
+        stderr in {
+            "CommandException: One or more URLs matched no objects.",
+            f"No URLs matched: {gs_url}",
+            f"CommandException: No URLs matched: {gs_url}",
+            f"NotFoundException: 404 No such object: {gs_url.removeprefix('gs://')}",
+            f"NotFoundException: 404 {gs_url} does not exist.",
+        }
+    ):
+        return False
+    diagnostic = _sanitize_gcs_diagnostic(stderr or stdout or "no diagnostic output")
+    raise RuntimeError(
+        f"gsutil ls failed for {gs_url} (rc={result.returncode}): {diagnostic}"
+    )
+
+
+def _sanitize_gcs_diagnostic(diagnostic: str) -> str:
+    diagnostic = re.sub(
+        r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----",
+        "[REDACTED]", diagnostic, flags=re.DOTALL,
+    )
+    diagnostic = re.sub(
+        r"\b(Bearer|Basic)\s+[^\s,\"']+", r"\1 [REDACTED]", diagnostic, flags=re.IGNORECASE,
+    )
+    return re.sub(
+        r"(\b(?:access_token|refresh_token|id_token|client_secret|private_key|password|"
+        r"api_key|x-goog-signature|x-goog-credential)\b[\"']?\s*[:=]\s*)"
+        r"(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s&,;]+)",
+        r"\1[REDACTED]", diagnostic, flags=re.IGNORECASE,
+    )
 
 
 def _rsync_cmd(sandbox: SandboxHandle, src: str, dst: str) -> str:

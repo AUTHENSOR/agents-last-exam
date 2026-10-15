@@ -151,6 +151,8 @@ class DockerExecutor(BaseExecutor):
             "secrets_file": SECRETS_FILE,
             "prompt": prompt,
             "timeout_s": float(timeout_s),
+            "run_token": uuid.uuid4().hex,
+            "sandbox_local": False,
         }
         (host_work / "_spec.json").write_text(json.dumps(spec, indent=2))
 

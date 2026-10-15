@@ -1,0 +1,12 @@
+# zcode — Z.ai's coding-agent CLI (built from source, no npm package),
+# routed through the Hugging Face Inference Providers router. See
+# ale_run/agents/zcode/deployer.py's module docstring and install() for the
+# build pipeline and the provider-config JSON shapes this preset relies on.
+# Reference as:  agents: [ configs/agents/zcode_hf.yaml ]
+
+harness: zcode
+model: Qwen/Qwen3.5-9B
+config:
+  provider_id: hf-router
+  base_url: https://router.huggingface.co/v1
+  api_key: ${env:HF_INFERENCE_TOKEN}

@@ -232,7 +232,12 @@ class BaseExecutor(abc.ABC):
 
         On crash inside the substrate, the implementation MUST surface
         the traceback in :attr:`AgentRunResult.error` (and pull any
-        crash logs into the host's gather target if possible)."""
+        crash logs into the host's gather target if possible).
+
+        Normal session completion must wait for supervised background tools
+        within the remaining timeout_s budget. At the deadline, stop the
+        entire supervised tree and report timeout before returning.
+        """
 
     @abc.abstractmethod
     async def gather_dir(

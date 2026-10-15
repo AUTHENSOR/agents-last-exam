@@ -1,0 +1,39 @@
+# Hugging Face Sandboxes provider — one dedicated HF Sandbox (an HF Job running
+# the published `agentslastexam/ale-ubuntu22-docker` image) per run unit.
+# CPU Linux candidates only; HF v1.1 task acceptance has not been established.
+# Needs a HF token with the
+# `jobs` scope (`hf auth login` or HF_TOKEN). The orchestrator can run anywhere
+# with outbound HTTPS — a laptop or another HF Job — no local Docker needed.
+provider: hfsandbox
+
+image: ale-ubuntu22-docker-v1-1    # pinned release artifact, not HF-provider acceptance
+flavor: cpu-xl                    # 16 vCPU / 124 GB / 1000 GB storage; verify live hardware
+min_storage_gb: 200               # unpacked image, pull overhead and task scratch
+transport: job                    # sandbox needs an SDK build exporting Sandbox; Hub 1.20.1 does not
+job_timeout: 24h                  # (job) hard cap; the run kills the job on release anyway
+idle_timeout: 3600                # (sandbox) self-terminate after 1h idle
+start_timeout: 1800               # cold image pull of the ~40 GB image can take 10-15 min
+resolution: [1024, 768]
+# namespace: my-org               # bill sandboxes to an org instead of the token owner
+
+# Task data setup (one-time, the image ships without it):
+#   1. Request access, then download the gated dataset:
+#        hf download agents-last-exam/agents-last-exam-data-archive \
+#          ale-tasks-data.tar.gz --repo-type dataset
+#   2. On persistent storage, prepare a tree with layout:
+#        <domain>/<task>/<variant>/{input,software,reference.7z}
+#      References MUST be encrypted, including archive headers. Keep the
+#      ALE_REFERENCE_ARCHIVE_PASSWORD only on the orchestrator until evaluation.
+#      Do not upload or mount plaintext reference/ directories, even read-only.
+#      Upload only the prepared encrypted-reference tree to a private bucket:
+#        hf buckets create <namespace>/<bucket> --private
+#        hf buckets sync <extracted-dir> hf://buckets/<namespace>/<bucket>
+#   3. Point `volumes` at that bucket. Every solver can read the entire mount;
+#      stage_input rejects plaintext reference directories and symlinks.
+volumes:
+  - hf://buckets/<namespace>/<bucket>:/mnt/ale-task-data:ro
+task_data_source: mounted:/mnt/ale-task-data
+# For data-less tasks only (demo/tool_smoke) you can drop `volumes` and use
+# task_data_source: baked_in_sandbox
+# The image still needs <task_data_root>/demo/<task>/base/input/ (empty is valid).
+output_path: null

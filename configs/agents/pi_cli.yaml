@@ -1,0 +1,22 @@
+# pi_cli — earendil-works/pi coding agent, run headless in the sandbox.
+# Auth: provider=openrouter uses OPENROUTER_API_KEY; provider=direct picks the
+# vendor's own key from the model's <vendor>/<id> prefix (ANTHROPIC_API_KEY,
+# OPENAI_API_KEY, GEMINI_API_KEY, XAI_API_KEY, HF_TOKEN); provider=custom needs
+# base_url + a key (api_key, OPENROUTER_API_KEY, or HF_TOKEN).
+#
+# Consolidated preset; every `config:` key is the dataclass default
+# (ale_run/agents/pi_cli/config.py).
+# Reference as:  agents: [ configs/agents/pi_cli.yaml ]
+
+harness: pi_cli
+model: anthropic/claude-sonnet-4.6
+config:
+  provider: openrouter
+  base_url: null
+  api_key: null
+  cli_version: "0.85.1"
+  thinking_level: null
+  max_tokens: 65536
+  input_modalities: [text, image]
+  disabled_tools: []
+  extra_args: []

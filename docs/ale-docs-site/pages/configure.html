@@ -168,6 +168,7 @@ cleanup_mode: delete</code></pre>
         <tr><td><code>configs/environments/environment_aws.yaml</code></td><td><a href="/pages/aws.html">AWS EC2</a> for CPU snapshots; verify matching v1.1 images</td><td><code>cpu.txt</code></td></tr>
         <tr><td><code>configs/environments/environment_aliyun.yaml</code></td><td><a href="/pages/aliyun.html">Alibaba Cloud ECS</a> for CPU snapshots; verify matching v1.1 images</td><td><code>cpu.txt</code></td></tr>
         <tr><td><code>configs/environments/docker.yaml</code></td><td><a href="/pages/local-docker.html">Local containers</a> for <code>cpu-free-ubuntu</code></td><td><code>docker_support.txt</code></td></tr>
+        <tr><td><code>configs/environments/hfsandbox.yaml</code></td><td><a href="/pages/hf-sandbox.html">HF Jobs</a> for CPU Linux; v1.1 acceptance pending</td><td>Start with <code>demo/tool_smoke</code></td></tr>
         <tr><td><code>configs/environments/qemu.yaml</code></td><td><a href="/pages/local.html">QEMU/KVM VMs</a> for CPU-compatible Ubuntu and Windows snapshots</td><td><code>cpu.txt</code></td></tr>
         <tr><td>Your own static profile</td><td><a href="/pages/static.html">Existing sandbox</a> for every selected task</td><td>A narrow list matching that machine</td></tr>
       </tbody>
@@ -289,6 +290,7 @@ output_path: null
       <li><code>baked_in_sandbox</code> uses encrypted references already stored in the image.</li>
       <li><code>gs://...</code> stages data inside the sandbox with <code>gsutil</code>.</li>
       <li><code>local:...</code> is currently implemented for the direct Docker provider.</li>
+      <li><code>mounted:...</code> copies from a Linux sandbox-visible mount. References on the mount must remain encrypted until evaluation; see <a href="/pages/hf-sandbox.html">HF setup</a>.</li>
       <li><code>hf://...</code> is accepted by configuration but task-data staging is not implemented yet.</li>
     </ul>
     <p>

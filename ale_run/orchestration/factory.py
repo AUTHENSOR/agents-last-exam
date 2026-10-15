@@ -45,6 +45,9 @@ _AGENT_FQNS: dict[str, str] = {
     "hermes": "ale_run.agents.hermes.deployer.HermesDeployer",
     "terminus_2": "ale_run.agents.terminus_2.deployer.Terminus2Deployer",
     "octavus_cli": "ale_run.agents.octavus_cli.deployer.OctavusCliDeployer",
+    "pi_cli": "ale_run.agents.pi_cli.deployer.PiCliDeployer",
+    "qwen_code": "ale_run.agents.qwen_code.deployer.QwenCodeDeployer",
+    "zcode": "ale_run.agents.zcode.deployer.ZCodeDeployer",
     "dummy": "ale_run.agents.dummy.deployer.DummyDeployer",
 }
 
@@ -189,6 +192,9 @@ def build_provider(spec: "ProviderSpec") -> "Provider":
     if kind == "qemu":
         from ..environments.providers.qemu import QemuProvider
         return QemuProvider(spec.config)
+    if kind == "hfsandbox":
+        from ..environments.providers.hfsandbox import HfSandboxProvider
+        return HfSandboxProvider(spec.config)
     raise NotImplementedError(f"provider kind {kind!r} is not implemented")
 
 

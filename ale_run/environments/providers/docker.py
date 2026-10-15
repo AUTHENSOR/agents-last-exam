@@ -288,6 +288,9 @@ class DockerProvider(Provider):
             "-p", f"127.0.0.1:0:{cua_internal_port}",
             "-p", f"127.0.0.1:0:{_VNC_INTERNAL_PORT}",
             f"--shm-size={self._cfg.shm_size}",
+            "--init",
+            "-e", "LANG=C.UTF-8",
+            "-e", "LC_ALL=C.UTF-8",
             # Virtual display size for the in-container Xvfb (the entrypoint reads
             # this; falls back to its own default if unset).
             "-e", f"ALE_SCREEN_RESOLUTION={res[0]}x{res[1]}",

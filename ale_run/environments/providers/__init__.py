@@ -9,6 +9,7 @@
   - :class:`StaticProvider` (``static.py``): a pre-existing VM endpoint.
   - :class:`DockerProvider` (``docker.py``): ephemeral Docker containers.
   - :class:`QemuProvider` (``qemu.py``): ephemeral local QEMU VMs in Docker.
+  - :class:`HfSandboxProvider` (``hfsandbox.py``): ephemeral HF Jobs.
 """
 
 from ...base_interface import SandboxSpec, Provider, ReleaseMode, SandboxHandle
@@ -16,6 +17,7 @@ from .aws import AwsProvider, AwsProviderConfig
 from .aliyun import AliyunProvider, AliyunProviderConfig
 from .docker import DockerProvider, DockerProviderConfig
 from .gcloud import GcloudProvider, GcloudProviderConfig
+from .hfsandbox import HfSandboxProvider, HfSandboxProviderConfig
 from .qemu import QemuProvider, QemuProviderConfig
 from .static import StaticProvider, StaticProviderConfig
 
@@ -29,6 +31,8 @@ __all__ = [
     "DockerProviderConfig",
     "GcloudProvider",
     "GcloudProviderConfig",
+    "HfSandboxProvider",
+    "HfSandboxProviderConfig",
     "Provider",
     "QemuProvider",
     "QemuProviderConfig",

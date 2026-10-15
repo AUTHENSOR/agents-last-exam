@@ -10,6 +10,6 @@ it pulls in ``cua_bench``, which a yaml-only ``--dry-run`` shouldn't need.
 ``from ale_run.tasks.driver import TaskDriver`` when you need it.
 """
 
-from .loader import TaskDataSpec, TaskLoader
+from .loader import TaskDataSpec, TaskLoader, list_tasks
 
-__all__ = ["TaskDataSpec", "TaskLoader"]
+__all__ = ["TaskDataSpec", "TaskLoader", "list_tasks"]
