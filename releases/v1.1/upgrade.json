@@ -2,13 +2,13 @@
   "schema_version": 1,
   "release": "v1.1",
   "baseline_commit": "2d4d2205c255e2f7dcf568baa1f0c108dfaa3d73",
-  "release_commit": "e28ff0b22827ba6d0f5657a8794f1ef4599e6a5a",
+  "release_commit": "0c164251393b7b194a07b7c397df528df7df03d1",
   "baseline_policy": "Repair accounting starts at source snapshot 2d4d220. The v1 tag preserves main immediately before v1.1. Use --from-commit for older snapshots. Retention records reuse eligibility, not original run provenance.",
   "hash_policy": "Complete task folders, including task-card edits, executable modes and symlink targets, hashed by ale_run.tasks.revision.task_revision. Generated caches are excluded. Nonrelease evidence is preserved outside task folders; required untracked source files belong to the publication set. Public checkout and runtime folders must have identical task hashes. source_map_identifier hashes the compact sorted JSON map of the 122 selected task IDs to their revisions.",
-  "revision_status": "cpu-portability-validated",
-  "scope_reconciled_date": "2026-10-14",
-  "scope_reconciled_timezone": "America/Los_Angeles",
-  "revision_note": "Task revisions include the software-independent butterfly CPU update, skeletal CPU routing and renderer launch fix; the earlier frozen source commit predates these changes.",
+  "revision_status": "frozen",
+  "scope_reconciled_date": "2026-10-15",
+  "scope_reconciled_timezone": "Etc/UTC",
+  "revision_note": "All 122 active task revisions match the source map and release_commit, including CPU animation support and evaluator launch fixes. Matching data and image identities are recorded separately in releases/v1.1/assets.json.",
   "tasks": {
     "agriculture_env/crop_rotation_d02": {
       "action": "retire",
@@ -1191,8 +1191,8 @@
   },
   "counting_policy": "Distinct selected benchmark tasks relative to v1 source and distributed inputs/references. Categories overlap. Excludes retired tasks, unselected variants, inactive metadata, packaging-only cleanup and shared framework changes.",
   "source_map_identifier": "sha256:ec87cf2ff8b317a131107f2bfa7b9b63f082193f03eadeb21d52f0700f012463",
-  "frozen_at": null,
-  "release_commit_status": "cpu-portability-changes-uncommitted",
+  "frozen_at": "2026-10-15T17:21:15Z",
+  "release_commit_status": "frozen-source-committed",
   "v1_tag": "v1",
   "v1_commit": "d9abc0734b56ea34116c5bfcbdd0b808269ab9e2"
 }
