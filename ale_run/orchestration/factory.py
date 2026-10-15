@@ -192,9 +192,6 @@ def build_provider(spec: "ProviderSpec") -> "Provider":
     if kind == "qemu":
         from ..environments.providers.qemu import QemuProvider
         return QemuProvider(spec.config)
-    if kind == "hfsandbox":
-        from ..environments.providers.hfsandbox import HfSandboxProvider
-        return HfSandboxProvider(spec.config)
     raise NotImplementedError(f"provider kind {kind!r} is not implemented")
 
 

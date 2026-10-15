@@ -322,12 +322,11 @@ def _build_artifacts(raw: dict[str, Any]) -> ArtifactsSpec:
             and not tdp.startswith("s3://")
             and not tdp.startswith("oss://")
             and not tdp.startswith("hf://")
-            and not tdp.startswith("local:")
-            and not tdp.startswith("mounted:")):
+            and not tdp.startswith("local:")):
         raise ValueError(
             f"artifacts_path.task_data_source must be 'baked_in_sandbox', "
             f"'gs://<bucket>', 's3://<bucket>', 'oss://<bucket>', 'hf://<dataset>', "
-            f"'local:<dir>', or 'mounted:<sandbox_dir>'; "
+            f"or 'local:<dir>'; "
             f"got {task_data_source!r}"
         )
 

@@ -31,9 +31,7 @@ class QwenCodeConfig:
     convention); set ``api_key: ${env:HF_INFERENCE_TOKEN}`` in the agent yaml."""
 
     cli_version: str = "0.24.4"
-    """Version of the ``@qwen-code/qwen-code`` npm package to install.
-    Pinned (not ``latest``) for reproducibility -- confirmed working via a
-    real local run and a real HF Jobs sandbox smoke test at this version."""
+    """Exact version of the ``@qwen-code/qwen-code`` npm package to install."""
 
     extra_envs: dict[str, str] = field(default_factory=dict)
     """Free-form passthrough env vars exported to the qwen subprocess.

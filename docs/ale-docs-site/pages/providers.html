@@ -71,12 +71,6 @@ uv sync --all-packages</code></pre>
           <td>The lightest local path for the supported Linux subset</td>
         </tr>
         <tr>
-          <td><a href="/pages/hf-sandbox.html"><strong>HF Sandboxes</strong></a><br><code>hfsandbox</code></td>
-          <td>A fresh Hugging Face Job for every run unit</td>
-          <td>CPU Linux tasks; v1.1 acceptance on HF is pending</td>
-          <td>No local Docker; requires HF Jobs credits and suitable hardware</td>
-        </tr>
-        <tr>
           <td><a href="/pages/local.html"><strong>QEMU/KVM VMs</strong></a><br><code>qemu</code></td>
           <td>A fresh QEMU/KVM guest VM for every run unit</td>
           <td>117 CPU-compatible Ubuntu and Windows tasks in <code>cpu.txt</code></td>
@@ -116,7 +110,6 @@ uv sync --all-packages</code></pre>
         <tr><td><code>configs/environments/environment_aws.yaml</code></td><td><code>selected_tasks/cpu.txt</code>; verify matching v1.1 images</td></tr>
         <tr><td><code>configs/environments/environment_aliyun.yaml</code></td><td><code>selected_tasks/cpu.txt</code>; verify matching v1.1 images</td></tr>
         <tr><td><code>configs/environments/docker.yaml</code></td><td><code>selected_tasks/docker_support.txt</code></td></tr>
-        <tr><td><code>configs/environments/hfsandbox.yaml</code></td><td>Start with <code>demo/tool_smoke</code>; validate HF capacity and compatibility before selecting benchmark tasks</td></tr>
         <tr><td><code>configs/environments/qemu.yaml</code></td><td><code>selected_tasks/cpu.txt</code></td></tr>
         <tr><td>A static environment</td><td>A small list known to match the attached machine</td></tr>
       </tbody>

@@ -76,7 +76,7 @@
     <p>
       Where those files come from is set by the environment's
       <a href="https://github.com/rdi-berkeley/agents-last-exam/blob/main/configs/environments/environment_gcloud.yaml"><code>task_data_source</code></a>,
-      which has four implemented modes:
+      which has three common modes:
     </p>
     <ul>
       <li><strong>Runtime pull</strong> (<code>gs://ale-data-public</code>) — the
@@ -94,14 +94,6 @@
       each task's input into the container before the agent and the reference in
       after. No encryption is needed: the reference is simply never inside the
       container while the agent runs — the same timing that hides it above.</li>
-      <li><strong>Sandbox mount</strong> (<code>mounted:&lt;dir&gt;</code>) — for the
-      <a href="/pages/hf-sandbox.html">HF Sandboxes</a> provider. A bucket you own is
-      mounted read-only into the sandbox job itself (no host in the loop), and the
-      framework copies input before the agent. A read-only mount is fully
-      readable by the agent: delayed copying does not hide plaintext answers.
-      Use encrypted <code>reference.7z</code> files with the password retained
-      on the orchestrator until evaluation. Plaintext reference directories
-      and symlinks are rejected before solver access.</li>
     </ul>
     <p>
       The configuration schema also reserves <code>hf://...</code> for direct
