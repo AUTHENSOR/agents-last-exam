@@ -52,14 +52,16 @@ across all 55 subdomains and reference integrations for several agent harnesses.
 ## Quick Start
 
 **ALE v1.1 selects 122 active tasks after 30 retirements.** The upgrade scope
-marks 56 active tasks for rerun and 66 for retention. Updates cover instructions
-(46), verification (43), environment (31), and data (23); categories overlap.
+marks 57 active tasks for rerun and 65 for retention. Updates cover instructions
+(47), verification (43), environment (32), and data (23); categories overlap.
 Six workflows move to open-source Linux tools, three also supported in Docker.
+Butterfly animation accepts any software; butterfly and skeletal animation now
+run on CPU QEMU, bringing CPU coverage to 119 tasks with three GPU tasks remaining.
 Task designs and source are frozen. Use the matching images and data pinned in
 the [asset manifest](releases/v1.1/assets.json). The compact
 [run and upgrade guide](docs/releases/v1.1.md) covers the changes, supported
 environments, setup, and existing logs; the [task review](docs/releases/v1.1-task-review.md)
-records decisions, validation scope and limits for all 56 modified tasks and
+records decisions, validation scope and limits for all 57 modified tasks and
 lists all 30 retirements. To preserve the original requirements, use the
 [v1 run guide](docs/releases/v1.md) with v1 code, legacy images, and fresh logs.
 
@@ -174,7 +176,8 @@ Set `tasks:` in your experiment to a compatible list:
 | List | Tasks | Coverage |
 |---|---:|---|
 | `selected_tasks/full.txt` | 122 | Complete benchmark; difficulty lists under `selected_tasks/full/*.txt` |
-| `selected_tasks/cpu.txt` | 117 | Ubuntu and Windows CPU tasks |
+| `selected_tasks/cpu.txt` | 119 | Ubuntu and Windows CPU tasks |
+| `selected_tasks/gpu.txt` | 3 | Windows GPU tasks |
 | `selected_tasks/ale_cli.txt` | 86 | Linux tasks, including desktop workflows |
 | `selected_tasks/docker_support.txt` | 78 | Supported local-container subset |
 

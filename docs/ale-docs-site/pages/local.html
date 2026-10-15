@@ -21,9 +21,17 @@
     <div class="note">
       <div class="note-title">Supported, CPU-only</div>
       Use <code>configs/environments/qemu.yaml</code> with
-      <code>selected_tasks/cpu.txt</code> for 117 selected CPU tasks.
+      <code>selected_tasks/cpu.txt</code> for 119 selected CPU tasks.
       GPU passthrough is outside the current provider scope.
     </div>
+    <p>
+      Butterfly animation accepts any software and uses 8 vCPU / 32 GiB.
+      Skeletal animation uses CPU rendering with 16 vCPU / 64 GiB; its complete
+      evaluator also passed on 8 vCPU / 32 GiB in under 11 minutes.
+      The three remaining GPU tasks depend on the current CUDA renderer,
+      Resolve compute backend, or Isaac setup. More CPU or RAM does not
+      remove those software/device requirements.
+    </p>
 
     <h2>Architecture and naming</h2>
     <div class="diagram">ALE host process
@@ -146,10 +154,11 @@ uv run python -m ale_run run local_vm_demo.yaml</code></pre>
 
     <h2>Task coverage</h2>
     <p>
-      <code>cpu.txt</code> contains 117 CPU tasks:
-      all 86 <code>cpu-free-ubuntu</code> tasks and 31 <code>cpu-free</code>
-      Windows tasks. The five selected Windows GPU tasks require the GCloud
-      GPU profile and are excluded from QEMU.
+      <code>cpu.txt</code> contains 119 CPU tasks:
+      all 86 <code>cpu-free-ubuntu</code> tasks and 32 <code>cpu-free</code>
+      Windows tasks. QEMU supports only CPU tasks. Run the three Windows GPU
+      tasks in <code>selected_tasks/gpu.txt</code> with
+      <code>configs/environments/environment_gcloud.yaml</code>.
     </p>
 
     <h2>Resource sizing and concurrency</h2>

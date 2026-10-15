@@ -1,9 +1,17 @@
 # Local QEMU/KVM provider
 
-Run the 117 CPU tasks in `selected_tasks/cpu.txt` using the v1.1 profile and
+Run the 119 CPU tasks in `selected_tasks/cpu.txt` using the v1.1 profile and
 frozen task source with matching image and data pins.
+QEMU supports only CPU tasks. Run the three tasks in `selected_tasks/gpu.txt`
+with `configs/environments/environment_gcloud.yaml`.
 The [website tutorial](https://agents-last-exam.org/docs?p=pages/local.html)
 explains the provider; the commands and maintainer details follow here.
+
+Butterfly animation uses 8 vCPU / 32 GiB and accepts any software. Skeletal
+animation uses 16 vCPU / 64 GiB with CPU rendering. Its complete evaluator
+also passed on 8 vCPU / 32 GiB in under 11 minutes. The remaining GPU tasks
+require the current CUDA renderer, Resolve compute backend, or Isaac setup;
+increasing CPU or RAM does not remove those software/device requirements.
 
 The `qemu` provider runs a complete Ubuntu or Windows guest with QEMU inside a
 Docker container. It provisions one VM for each ALE run and deletes it during

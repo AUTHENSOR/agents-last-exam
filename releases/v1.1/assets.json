@@ -4,15 +4,15 @@
   "selected_task_lists": {
     "selected_tasks/ale_cli.txt": {
       "count": 86,
-      "sha256": "60d2bf29f2784da969cadec61141fda74856444cbc203478dab51ecd010032a7"
+      "sha256": "45669c7f1f9a171780c1f35453874d940c028d70cafcdd98df084a96191d3e19"
     },
     "selected_tasks/cpu.txt": {
-      "count": 117,
-      "sha256": "193b9c8848290deb8c99bfd6dacfaedf2b27cf25162e01192ef288bdb8875190"
+      "count": 119,
+      "sha256": "0e15757312336aab88993b35162670d46667278e9cf8be5ba2d1cee1316563ff"
     },
     "selected_tasks/docker_support.txt": {
       "count": 78,
-      "sha256": "a453bbafa3459e7d95447994894ee323d95882c49c3ec8481750750ea2ddd3d2"
+      "sha256": "2112356ad3df9379380297905f55860d3f6c47f2dd3fcaaa2367e5080998f76c"
     },
     "selected_tasks/full/full-spectrum.txt": {
       "count": 46,
@@ -32,15 +32,15 @@
     },
     "selected_tasks/full.txt": {
       "count": 122,
-      "sha256": "978976c98c0ee2f4dd3d5b5e22850d249ea22fbf8e9e38116559d4b8e2a29a36"
+      "sha256": "f780efa9974ff1e964bbf52bbbe5524bc3bcc6ef25c9b8549b925ade2658cf06"
     },
     "selected_tasks/hello_both.txt": {
       "count": 2,
       "sha256": "ff0f8bcccd31e24f97672dfb142ebcb372817770983e83b1b33db8aed815975d"
     },
-    "selected_tasks/qemu_excluded.txt": {
-      "count": 5,
-      "sha256": "873a691a6d4b036db3dd4ce906d455cb3c63501b25a683d7ab5062970a92f3df"
+    "selected_tasks/gpu.txt": {
+      "count": 3,
+      "sha256": "0446bc4a9155abef7e429ed3d0dc391071c6468b00c526defba06c1a8b2eed12"
     },
     "selected_tasks/tool_smoke_both.txt": {
       "count": 2,
@@ -213,7 +213,7 @@
     "aligned_linux_qcow2_sha256": "6557e22ca4dc5a3faba79b36e8c57d859951d17ace9e218f2355db7b77a42bc0"
   },
   "scope": {
-    "updated_tasks": 56,
+    "updated_tasks": 57,
     "excluded": [
       "AWS",
       "Aliyun"
@@ -259,9 +259,9 @@
       "visual_media/inkscape_cultural_poster_design": "Removed from the final v1.1 task selection."
     },
     "task_change_categories": {
-      "instruction": 46,
+      "instruction": 47,
       "verification": 43,
-      "environment": 31,
+      "environment": 32,
       "data": 23
     },
     "task_change_manifest": "releases/v1.1/upgrade.json"

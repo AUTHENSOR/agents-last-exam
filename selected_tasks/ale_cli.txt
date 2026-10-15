@@ -1,4 +1,5 @@
-# All published cpu-free-ubuntu tasks (110) - the full Linux CPU task set.
+# All published cpu-free-ubuntu tasks, including desktop workflows.
+# Total: 86 tasks.
 business_finance/american_option_pricing_ls
 business_finance/basel_operational_risk_bia_cn
 business_finance/bpmn_category_governance_restructuring_l3

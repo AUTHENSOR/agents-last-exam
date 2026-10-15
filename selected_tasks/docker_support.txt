@@ -1,10 +1,11 @@
-# Linux (cpu-free-ubuntu) Docker allowlist - 101 tasks.
+# Linux (cpu-free-ubuntu) Docker allowlist.
+# Total: 78 tasks.
 # Blender building, MuseScore transcription, and Ardour migration passed
 # native workflow checks in the published container.
 # The 4 tasks needing nested Docker (openroad_sky130_ibex_pnr_signoff,
 # k8s_migration_1, bpmn_supply_disruption_l3, bpmn_category_governance_restructuring_l3)
-# and 2 tasks needing Apptainer/Singularity .simg GUI bundles
-# (scene3_skullstrip_qc, scene2_resample) are excluded; see local Docker docs.
+# and scene2_resample, which needs an Apptainer/Singularity .simg GUI bundle,
+# are excluded; see local Docker docs.
 # Also excluded: gcode requires bubblewrap PID/network namespaces; Road
 # (cailian_road_highway_alignment_2) and inner_support_elevation_optimization
 # require systemd supervision, and inner-support requires delegated cgroups.

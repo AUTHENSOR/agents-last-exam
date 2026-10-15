@@ -58,13 +58,6 @@ DOCKER_EXCLUSIONS = {
     "business_finance/bpmn_category_governance_restructuring_l3",
     "psychology_neuro/scene2_resample",
 }
-CPU_EXCLUSIONS = {
-    "engineering/humanoid_velocity_tracking_policy",
-    "visual_media/butterfly_flap_animation",
-    "visual_media/chroma_key_from_reference",
-    "visual_media/compress_3dgs_scene_ply",
-    "visual_media/skeletal_animation_reproduction",
-}
 
 
 @pytest.fixture
@@ -80,9 +73,14 @@ def selections():
 
 
 def test_curated_lists_only_select_existing_unique_tasks(selections):
+    full = set(selections["full.txt"])
     for name, task_ids in selections.items():
         assert len(task_ids) == len(set(task_ids)), name
         assert RETIRED_TASKS.isdisjoint(task_ids), name
+        if name in {"hello_both.txt", "tool_smoke_both.txt"}:
+            assert all(task_id.startswith("demo/") for task_id in task_ids), name
+        else:
+            assert set(task_ids) <= full, name
         for task_id in task_ids:
             assert (ROOT / "tasks" / task_id / "main.py").is_file(), (name, task_id)
 
@@ -107,9 +105,11 @@ def test_release_selection_matches_task_routing(selections):
     assert set(selections["ale_cli.txt"]) == linux
     assert set(selections["docker_support.txt"]) == linux - DOCKER_EXCLUSIONS
     assert len(selections["docker_support.txt"]) == 78
-    assert set(selections["cpu.txt"]) == full - CPU_EXCLUSIONS
-    assert len(selections["cpu.txt"]) == 117
-    assert set(selections["qemu_excluded.txt"]) == CPU_EXCLUSIONS
+    gpu = {task_id for task_id, snapshot in snapshots.items() if snapshot == "gpu-free"}
+    assert set(selections["gpu.txt"]) == gpu
+    assert len(gpu) == 3
+    assert set(selections["cpu.txt"]) == full - gpu
+    assert len(selections["cpu.txt"]) == 119
     for name in ("cpu.txt", "full.txt", "ale_cli.txt"):
         assert OSS_VARIANTS.keys() <= set(selections[name]), name
     assert set(selections["docker_support.txt"]) & OSS_VARIANTS.keys() == (

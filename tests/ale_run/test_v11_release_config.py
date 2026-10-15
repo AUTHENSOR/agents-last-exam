@@ -28,9 +28,26 @@ def test_selected_task_lists_match_release(assets):
         tasks = [line.strip() for line in payload.decode().splitlines() if line.strip() and not line.lstrip().startswith("#")]
         assert hashlib.sha256(payload).hexdigest() == entry["sha256"]
         assert len(tasks) == entry["count"]
+        declared_counts = re.findall(r"^# Total: (\d+) tasks\.$", payload.decode(), re.MULTILINE)
+        for declared_count in declared_counts:
+            assert int(declared_count) == len(tasks), path
     assert assets["selected_task_lists"]["selected_tasks/full.txt"]["count"] == 122
-    assert assets["selected_task_lists"]["selected_tasks/cpu.txt"]["count"] == 117
+    assert assets["selected_task_lists"]["selected_tasks/cpu.txt"]["count"] == 119
+    assert assets["selected_task_lists"]["selected_tasks/gpu.txt"]["count"] == 3
     assert assets["selected_task_lists"]["selected_tasks/docker_support.txt"]["count"] == 78
+
+
+@pytest.mark.parametrize("path", ["README.md", "docs/releases/v1.1.md", "docs/ale-docs-site/pages/configure.html"])
+def test_documented_task_list_counts_match_release(assets, path):
+    text = (ROOT / path).read_text()
+    for name in ("full.txt", "cpu.txt", "gpu.txt", "ale_cli.txt", "docker_support.txt"):
+        if path.endswith(".html"):
+            pattern = rf"<code>{re.escape(name)}</code></td><td>(\d+)</td>"
+        else:
+            pattern = rf"\| `selected_tasks/{re.escape(name)}` \| (\d+) \|"
+        match = re.search(pattern, text)
+        assert match is not None, (path, name)
+        assert int(match.group(1)) == assets["selected_task_lists"][f"selected_tasks/{name}"]["count"]
 
 
 def test_manifest_describes_one_public_release(assets):

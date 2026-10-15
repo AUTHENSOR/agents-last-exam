@@ -21,8 +21,8 @@
     <h2 id="v1-1">Use the v1.1 release</h2>
     <p>
       ALE v1.1 selects <strong>122 active tasks</strong> after 30 retirements.
-      The upgrade scope marks <strong>56 active tasks</strong> for rerun and
-      66 for retention. To preserve the original requirements, follow
+      The upgrade scope marks <strong>57 active tasks</strong> for rerun and
+      65 for retention. To preserve the original requirements, follow
       <a href="https://github.com/rdi-berkeley/agents-last-exam/blob/main/docs/releases/v1.md"><strong>Run original v1</strong></a>
       with v1 code, legacy images and fresh logs, not v1.1 assets or results. Six formerly
       licensed tasks keep their IDs and business goals using open-source Linux
@@ -46,14 +46,14 @@
     <table>
       <thead><tr><th>Change</th><th>Tasks</th><th>What counts</th></tr></thead>
       <tbody>
-        <tr><td>Instruction</td><td>46</td><td>Agent-facing prompts and instructions, including input documents</td></tr>
+        <tr><td>Instruction</td><td>47</td><td>Agent-facing prompts and instructions, including input documents</td></tr>
         <tr><td>Verification</td><td>43</td><td>Scoring logic, acceptance rules and grader execution</td></tr>
-        <tr><td>Environment</td><td>31</td><td>Task-specific software, dependencies, setup, staging, paths, resources or platform</td></tr>
+        <tr><td>Environment</td><td>32</td><td>Task-specific software, dependencies, setup, staging, paths, resources or platform</td></tr>
         <tr><td>Data</td><td>23</td><td>Input materials, starter/helper assets, models, media or reference answers</td></tr>
       </tbody>
     </table>
     <p>
-      Categories overlap; the six conversions are included in the 56 updated
+      Categories overlap; the six conversions are included in the 57 updated
       tasks. Classify by content, not storage location: a prompt edit in a data
       archive counts as Instruction. These counts exclude the retired tasks,
       unselected variants, inactive metadata, packaging-only cleanup and shared
@@ -66,6 +66,13 @@
       <a href="https://github.com/rdi-berkeley/agents-last-exam/blob/main/docs/releases/v1.1-task-review.md">task review</a>
       records validation scope and limits; it does not certify complete agent
       validation of the release.
+    </p>
+    <p>
+      Butterfly animation accepts any software. Butterfly and skeletal animation
+      now run on CPU QEMU, for 119 CPU tasks and three GPU tasks. Skeletal evaluation
+      prevents duplicate render launches after transport retries without changing
+      its scoring requirements. Task setup replaces the old butterfly input
+      specification; the published images and data remain compatible.
     </p>
     <p>
       Changes preserve the original business goal and intended difficulty, align
@@ -197,7 +204,8 @@ cleanup_mode: delete</code></pre>
         <tr><td><code>hello_both.txt</code></td><td>2</td><td>Ubuntu and Windows smoke test</td></tr>
         <tr><td><code>docker_support.txt</code></td><td>78</td><td>Supported local-container subset</td></tr>
         <tr><td><code>ale_cli.txt</code></td><td>86</td><td>All selected <code>cpu-free-ubuntu</code> tasks, including desktop workflows</td></tr>
-        <tr><td><code>cpu.txt</code></td><td>117</td><td>Ubuntu and Windows CPU tasks</td></tr>
+        <tr><td><code>cpu.txt</code></td><td>119</td><td>Ubuntu and Windows CPU tasks</td></tr>
+        <tr><td><code>gpu.txt</code></td><td>3</td><td>Windows GPU tasks; use the Google Cloud profile</td></tr>
         <tr><td><code>full.txt</code></td><td>122</td><td>The complete v1.1 benchmark</td></tr>
       </tbody>
     </table>

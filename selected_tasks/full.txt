@@ -1,4 +1,5 @@
-# All tasks from 
+# All published v1.1 benchmark tasks.
+# Total: 122 tasks.
 business_finance/american_option_pricing_ls
 business_finance/ar_full_1500
 business_finance/ar_full_300

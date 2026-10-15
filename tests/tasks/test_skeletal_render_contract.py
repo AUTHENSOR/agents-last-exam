@@ -86,6 +86,7 @@ def wrapper_args(monkeypatch, tmp_path):
         output_dir=str(tmp_path / "output"),
         renderer_script=str(RENDERER),
         evaluation_config=str(config),
+        launch=False,
     )
     monkeypatch.setattr(remote_render_eval, "parse_args", lambda: args)
     monkeypatch.setenv("BLENDER_BINARY", "blender")
