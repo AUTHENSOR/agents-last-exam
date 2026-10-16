@@ -2,13 +2,13 @@
   "schema_version": 1,
   "release": "v1.1",
   "baseline_commit": "2d4d2205c255e2f7dcf568baa1f0c108dfaa3d73",
-  "release_commit": "2f3dad9efcacc133108e1619f4b29745710e8cb7",
+  "release_commit": "a1319f7e58d132c93a63a7d29d8640d44492f368",
   "baseline_policy": "Repair accounting starts at source snapshot 2d4d220. The v1 tag preserves main immediately before v1.1. Use --from-commit for older snapshots. Retention records reuse eligibility, not original run provenance.",
   "hash_policy": "Complete task folders, including task-card edits, executable modes and symlink targets, hashed by ale_run.tasks.revision.task_revision. Generated caches are excluded. Nonrelease evidence is preserved outside task folders; required untracked source files belong to the publication set. Public checkout and runtime folders must have identical task hashes. source_map_identifier hashes the compact sorted JSON map of the 122 selected task IDs to their revisions.",
   "revision_status": "frozen",
   "scope_reconciled_date": "2026-10-15",
   "scope_reconciled_timezone": "Etc/UTC",
-  "revision_note": "All 122 active task revisions match the source map and release_commit, including CPU animation support, evaluator launch fixes and G-code release metadata/documentation alignment. Matching data and image identities are recorded separately in releases/v1.1/assets.json.",
+  "revision_note": "All 122 active task revisions match the source map and release_commit, including CPU animation support, evaluator launch fixes, G-code release metadata/documentation alignment and isolated evaluator artifacts. Matching data and image identities are recorded separately in releases/v1.1/assets.json.",
   "tasks": {
     "agriculture_env/crop_rotation_d02": {
       "action": "retire",
@@ -432,7 +432,7 @@
     },
     "engineering/inner_support_elevation_optimization": {
       "action": "rerun",
-      "revision": "sha256:e080f48b570dc160ec36e21992778cca5514d6b23b1d82a03867bc4134b9d016",
+      "revision": "sha256:9716a0e1b1ff309c173668e60fb8e68257cf65548244797796c8c556f972446e",
       "reasons": [
         "task-repair-data-update-or-oss-conversion",
         "source-diff-from-v1-baseline"
@@ -1154,7 +1154,7 @@
     },
     "visual_media/uv_reproduction": {
       "action": "rerun",
-      "revision": "sha256:ed5949ed233fa885867b95553793d44f3b5705901cd24d6a1adc29f527608183",
+      "revision": "sha256:54bedd0e760ec43e6a89ee88c2a8cdfe858c75011bc5adeb4a756f0b9fccf24d",
       "reasons": [
         "task-repair-data-update-or-oss-conversion",
         "source-diff-from-v1-baseline"
@@ -1190,8 +1190,8 @@
     "data": "Inputs, starter/helper assets, models, media or reference answers; excludes instruction-only, grader-only and runtime-only payload edits."
   },
   "counting_policy": "Distinct selected benchmark tasks relative to v1 source and distributed inputs/references. Categories overlap. Excludes retired tasks, unselected variants, inactive metadata, packaging-only cleanup and shared framework changes.",
-  "source_map_identifier": "sha256:2d8644b0b6d4d3764b5a42b3635e19f231646d091716f8b3a9d5cd9edd7b069d",
-  "frozen_at": "2026-10-16T23:42:04Z",
+  "source_map_identifier": "sha256:307a634771b5240c7cda1bbf91f44c3785789ad71f7a484fb97d49c287d2c802",
+  "frozen_at": "2026-10-16T23:56:19Z",
   "release_commit_status": "frozen-source-committed",
   "v1_tag": "v1",
   "v1_commit": "d9abc0734b56ea34116c5bfcbdd0b808269ab9e2"
