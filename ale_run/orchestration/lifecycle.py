@@ -20,7 +20,7 @@ Phase mapping (refined from simprun, surface renamed to LOG_SPEC events):
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
+from dataclasses import asdict, replace
 import logging
 import signal
 import time
@@ -337,6 +337,9 @@ async def run_one_unit(
             tail_task: asyncio.Task | None = None
             tail_targets: list[tuple[str, Path]] = []
             if isinstance(executor, SandboxExecutor):
+                executor.on_run_result = lambda result: writer.emit_event(
+                    "agent_run_result", **asdict(result),
+                )
                 hot = tuple(getattr(deployer_cls, "hot_artifacts", ()) or ())
                 if hot:
                     sep = "/" if env.sandbox.is_linux else "\\"
@@ -361,6 +364,7 @@ async def run_one_unit(
                         name="tail_hot_artifacts",
                     )
 
+            launch_error: BaseException | None = None
             try:
                 run_result = await asyncio.wait_for(
                     executor.run_deployer(
@@ -370,15 +374,18 @@ async def run_one_unit(
                     ),
                     timeout=timeout_s,
                 )
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as launch_exc:
+                launch_error = launch_exc
                 run_result = AgentRunResult(
                     status="timeout",
                     error=f"agent wall-budget exceeded after {timeout_s}s",
                     duration_s=float(timeout_s),
                 )
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as launch_exc:
+                launch_error = launch_exc
                 raise
             except Exception as launch_exc:
+                launch_error = launch_exc
                 import traceback as _tb
                 run_result = AgentRunResult(
                     status="failed",
@@ -388,11 +395,22 @@ async def run_one_unit(
                 )
             finally:
                 try:
+                    if run_result is not None and (
+                        not isinstance(executor, SandboxExecutor)
+                        or executor.last_run_result is None
+                    ):
+                        writer.emit_event("agent_run_result", **asdict(run_result))
                     env.set_phase("agent_stop")
                     await executor.stop_deployer()
                     writer.emit_event("agent_stopped")
                 except BaseException as stop_exc:
-                    writer.emit_event("agent_stop_failed", error=str(stop_exc))
+                    writer.emit_event(
+                        "agent_stop_failed", error=str(stop_exc),
+                        run_result=asdict(run_result) if run_result is not None else None,
+                        launch_error=err_dict(launch_error) if launch_error is not None else None,
+                    )
+                    if launch_error is not None and launch_error is not stop_exc:
+                        raise stop_exc from launch_error
                     raise
                 finally:
                     if tail_task is not None:

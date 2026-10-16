@@ -46,6 +46,16 @@ uv run python -m ale_run run my_experiment.yaml \
       stops the supervised process tree. ALE confirms process exit before
       staging or decrypting reference data and starting evaluation.
     </p>
+    <p>
+      On Linux with systemd, the solver and its supervisor run in a separate
+      service from CUA, so a worker OOM does not trigger CUA's service-wide
+      shutdown. Only the supervisor receives OOM protection; workers retain
+      normal priority. Agent results are recorded before cleanup, and failed
+      termination confirmation still blocks reference access. The sandbox
+      needs root or noninteractive <code>sudo</code> access to
+      <code>systemd-run</code> and <code>systemctl</code>. Without systemd, ALE
+      retains detached process supervision; Windows uses Job Objects.
+    </p>
 
     <h2>Resume and retry failed units</h2>
     <pre><code>auto_resume: true

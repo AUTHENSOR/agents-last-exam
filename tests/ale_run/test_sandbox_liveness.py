@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import json
 import subprocess
+import traceback
 from dataclasses import dataclass
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from ale_run.agents.dummy.config import DummyConfig
 from ale_run.agents.dummy.deployer import DummyDeployer
-from ale_run.base_interface import SandboxHandle
+from ale_run.base_interface import AgentRunResult, SandboxHandle
 from ale_run.base_interface import sandbox as sandbox_interface
 from ale_run.executors import sandbox as sandbox_executor
 from ale_run.executors.sandbox import SandboxExecutor, _build_launcher
@@ -183,6 +185,135 @@ async def test_process_missing_probes_still_fail_run(
     assert result.error is not None
     assert "process disappeared" in result.error
     assert "process-missing probes" in result.error
+
+
+@pytest.mark.parametrize("os_type", ["linux", "windows"])
+@pytest.mark.asyncio
+async def test_missing_process_result_is_recorded_before_stop_failure(monkeypatch, os_type):
+    sandbox = _FakeSandbox(os=os_type)
+    sandbox.alive_results = [1, 1, 1]
+    executor = await _prepare_executor(monkeypatch, sandbox)
+    recorded = []
+    executor.on_run_result = recorded.append
+
+    async def stop():
+        assert recorded == [executor.last_run_result]
+        raise RuntimeError("termination unconfirmed")
+
+    monkeypatch.setattr(executor, "stop_deployer", stop)
+    with pytest.raises(RuntimeError, match="termination unconfirmed") as caught:
+        await executor.run_deployer(deployer_cls=DummyDeployer, prompt="test", timeout_s=60)
+
+    assert executor.last_run_result.pid == 1234
+    assert "process disappeared" in executor.last_run_result.error
+    assert "process disappeared" in "".join(traceback.format_exception(caught.value))
+
+
+@pytest.mark.parametrize("os_type", ["linux", "windows"])
+@pytest.mark.parametrize("worker_pid", [None, 5678])
+@pytest.mark.parametrize("stop_fails", [False, True])
+@pytest.mark.asyncio
+async def test_failed_worker_identity_survives_host_result(
+    monkeypatch, os_type, worker_pid, stop_fails,
+):
+    sandbox = _FakeSandbox(os=os_type)
+    sandbox.result = {
+        "ok": False,
+        "status": "failed",
+        "exit_code": -9,
+        "error": "solver worker exited with code -9 without _worker_result.json",
+    }
+    if worker_pid is not None:
+        sandbox.result["pid"] = worker_pid
+    executor = await _prepare_executor(monkeypatch, sandbox)
+    recorded = []
+    executor.on_run_result = recorded.append
+    stop = AsyncMock(side_effect=RuntimeError("stop failed") if stop_fails else None)
+    monkeypatch.setattr(executor, "stop_deployer", stop)
+
+    if stop_fails:
+        with pytest.raises(RuntimeError, match="stop failed") as caught:
+            await executor.run_deployer(deployer_cls=DummyDeployer, prompt="test", timeout_s=60)
+        rendered = "".join(traceback.format_exception(caught.value))
+        assert '"exit_code": -9' in rendered
+        assert f'"pid": {worker_pid or 1234}' in rendered
+    else:
+        result = await executor.run_deployer(
+            deployer_cls=DummyDeployer, prompt="test", timeout_s=60,
+        )
+        assert result is executor.last_run_result
+
+    stop.assert_awaited_once()
+    assert recorded == [executor.last_run_result]
+    assert recorded[0].status == "failed"
+    assert recorded[0].error == sandbox.result["error"]
+    assert recorded[0].pid == (worker_pid or 1234)
+    assert recorded[0].exit_code == -9
+
+
+@pytest.mark.parametrize("run_raises", [False, True])
+@pytest.mark.parametrize("observer_raises", [False, True])
+@pytest.mark.asyncio
+async def test_primary_and_observer_errors_survive_cleanup_failure(
+    monkeypatch, run_raises, observer_raises,
+):
+    executor = _executor(_FakeSandbox())
+    original = AgentRunResult(status="failed", error="primary run failure", pid=42, exit_code=-9)
+    run = AsyncMock(
+        side_effect=ValueError("primary run failure") if run_raises else None,
+        return_value=original,
+    )
+    observer = Mock(side_effect=LookupError("observer failure") if observer_raises else None)
+    executor.on_run_result = observer
+    stop = AsyncMock(side_effect=RuntimeError("cleanup failure"))
+    monkeypatch.setattr(executor, "_run_deployer", run)
+    monkeypatch.setattr(executor, "stop_deployer", stop)
+
+    with pytest.raises(RuntimeError, match="cleanup failure") as caught:
+        await executor.run_deployer(deployer_cls=DummyDeployer, prompt="test", timeout_s=60)
+
+    stop.assert_awaited_once()
+    observer.assert_called_once_with(executor.last_run_result)
+    rendered = "".join(traceback.format_exception(caught.value))
+    assert "primary run failure" in rendered
+    if observer_raises:
+        assert "observer failure" in rendered
+    if not run_raises:
+        assert executor.last_run_result is original
+    else:
+        assert "ValueError" in executor.last_run_result.error
+
+
+@pytest.mark.asyncio
+async def test_timeout_result_is_recorded_before_stop_failure(monkeypatch):
+    sandbox = _FakeSandbox()
+    executor = await _prepare_executor(monkeypatch, sandbox)
+    recorded = []
+    executor.on_run_result = recorded.append
+    monkeypatch.setattr(executor, "stop_deployer", AsyncMock(side_effect=RuntimeError("stop failed")))
+
+    with pytest.raises(RuntimeError, match="stop failed"):
+        await executor.run_deployer(deployer_cls=DummyDeployer, prompt="test", timeout_s=0)
+
+    assert len(recorded) == 1
+    assert recorded[0].status == "timeout"
+    assert "wall budget" in recorded[0].error
+
+
+@pytest.mark.asyncio
+async def test_observer_failure_propagates_after_successful_stop(monkeypatch):
+    executor = _executor(_FakeSandbox())
+    original = AgentRunResult(status="completed")
+    monkeypatch.setattr(executor, "_run_deployer", AsyncMock(return_value=original))
+    executor.on_run_result = Mock(side_effect=LookupError("observer failure"))
+    stop = AsyncMock()
+    monkeypatch.setattr(executor, "stop_deployer", stop)
+
+    with pytest.raises(LookupError, match="observer failure"):
+        await executor.run_deployer(deployer_cls=DummyDeployer, prompt="test", timeout_s=60)
+
+    stop.assert_awaited_once()
+    assert executor.last_run_result is original
 
 
 @pytest.mark.asyncio

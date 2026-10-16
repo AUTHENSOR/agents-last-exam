@@ -174,7 +174,20 @@ async def _configure_npm_prefix() -> None:
     npm_bin = f"{npm_global}/bin"
     os.makedirs(npm_global, exist_ok=True)
 
-    await _sh(f"npm config set prefix '{npm_global}'", timeout=15)
+    for attempt in range(2):
+        try:
+            proc = await _sh(f"npm config set prefix '{npm_global}'", timeout=60)
+            break
+        except subprocess.TimeoutExpired:
+            if attempt == 1:
+                raise
+            logger.warning("bootstrap: npm config set prefix timed out after 60s; retrying once")
+
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"bootstrap: npm config set prefix failed (rc={proc.returncode}): "
+            f"{(proc.stderr or proc.stdout or '')[-500:]}"
+        )
 
     if npm_bin not in os.environ.get("PATH", ""):
         os.environ["PATH"] = f"{npm_bin}:{os.environ.get('PATH', '')}"

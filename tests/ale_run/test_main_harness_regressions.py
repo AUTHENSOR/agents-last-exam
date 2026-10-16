@@ -412,20 +412,108 @@ async def test_pi_custom_model_preserves_input_capabilities(tmp_path, monkeypatc
     assert "audit-key" not in models_file.read_text()
 
 
-def test_zcode_explicit_model_limits_and_reasoning_request(tmp_path):
+@pytest.fixture
+def zcode_builtin():
+    return {
+        "schemaVersion": 1,
+        "revision": 42,
+        "config": {
+            "providerConfigRules": {"templateRules": [], "providerRules": []},
+            "modelConfigRules": {
+                "modelRules": [
+                    {
+                        "modelMatch": ".*",
+                        "config": {"optionSpecs": {"maxOutputTokens": {"max": 9137}}},
+                    },
+                ],
+                "modelApiRules": [
+                    {
+                        "modelMatch": ".*",
+                        "apiTypeMatch": "openai-chat-completions",
+                        "config": {
+                            "optionSpecs": {
+                                "maxOutputTokens": {"map": "{'max_tokens': maxOutputTokens}"},
+                            },
+                        },
+                    },
+                ],
+                "providerSiteRules": [],
+                "templateModelRules": [],
+                "builtinProviderModelRules": [],
+            },
+        },
+    }
+
+
+def test_zcode_builtin_defaults_preserve_upstream_output_limit(zcode_builtin):
+    from ale_run.agents.zcode import ZCodeConfig, ZCodeDeployer
+
+    config = ZCodeConfig()
+    assert config.max_output_tokens is None
+    original = json.dumps(zcode_builtin)
+    builtin = ZCodeDeployer._build_builtin_config(config, zcode_builtin)
+    rules = builtin["config"]["modelConfigRules"]
+    override = rules["builtinProviderModelRules"].pop()
+    assert override["providerId"] == config.provider_id
+    assert override["modelId"] == config.model
+    assert "maxOutputTokens" not in json.dumps(override)
+    assert "max_completion_tokens" not in json.dumps(builtin)
+    assert builtin == zcode_builtin
+    assert json.dumps(zcode_builtin) == original
+
+
+@pytest.mark.parametrize("overrides", [{}, {"max_output_tokens": None}])
+@pytest.mark.parametrize("context_window", [64000, 1048576])
+def test_zcode_unset_output_limit_preserves_context_and_reasoning(
+    overrides, context_window, zcode_builtin
+):
+    from ale_run.agents.zcode import ZCodeConfig, ZCodeDeployer
+
+    config = build_config(
+        ZCodeConfig,
+        {
+            "context_window": context_window,
+            "reasoning_request": {"reasoning_effort": "low"},
+            **overrides,
+        },
+    )
+    builtin = ZCodeDeployer._build_builtin_config(config, zcode_builtin)
+    personal = ZCodeDeployer._build_personal_config(config)
+    rules = builtin["config"]["modelConfigRules"]
+    override = rules["builtinProviderModelRules"][-1]
+    serialized = json.dumps([override, personal])
+    assert "maxOutputTokens" not in serialized
+    assert "max_completion_tokens" not in serialized
+    model = override["config"]
+    assert model["properties"]["contextWindow"] == context_window
+    assert model["optionSpecs"]["reasoningLevel"]["values"] == ["disabled", "enabled"]
+    options = model["optionSpecs"]
+    assert json.loads(options["reasoningLevel"]["map"]) == {"reasoning_effort": "low"}
+
+
+@pytest.mark.parametrize("max_output_tokens", [128, 131072])
+def test_zcode_explicit_model_limits_and_reasoning_request(
+    tmp_path, max_output_tokens, zcode_builtin
+):
     _, deployer = adapter(
         "zcode",
         "ZCode",
         tmp_path,
         context_window=64000,
-        max_output_tokens=128,
+        max_output_tokens=max_output_tokens,
         reasoning_request={"reasoning_effort": "low"},
     )
-    rules = deployer._build_builtin_config(deployer.config)["config"]["modelConfigRules"]
-    model = rules["modelRules"][0]["config"]
+    rules = deployer._build_builtin_config(deployer.config, zcode_builtin)["config"][
+        "modelConfigRules"
+    ]
+    model = rules["builtinProviderModelRules"][-1]["config"]
     assert model["properties"]["contextWindow"] == 64000
-    assert model["optionSpecs"]["maxOutputTokens"]["max"] == 128
-    options = rules["modelApiRules"][0]["config"]["optionSpecs"]
+    assert model["optionSpecs"]["maxOutputTokens"]["max"] == max_output_tokens
+    options = model["optionSpecs"]
+    assert options["maxOutputTokens"] == {
+        "max": max_output_tokens,
+        "map": "{'max_completion_tokens': maxOutputTokens}",
+    }
     assert json.loads(options["reasoningLevel"]["map"]) == {"reasoning_effort": "low"}
     assert "thinking" not in options["reasoningLevel"]["map"]
 

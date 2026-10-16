@@ -2,7 +2,7 @@
 
 The framework ships the ``ale_run/`` source tree to the sandbox (one-time
 per run, size-skipped on repeats), writes a ``_spec.json`` into the
-deployer's work_dir, fires a small launcher that ``setsid``-spawns
+deployer's work_dir, fires a small launcher that detaches
 ``python -m ale_run.executors._sandbox_entry <spec>``, then polls until
 the in-sandbox process drops a ``_done.marker``.
 
@@ -32,11 +32,13 @@ import asyncio
 import json
 import logging
 import shlex
+import sys
 import time
+import traceback
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, Callable, ClassVar
 
 from ..base_interface import (
     BaseExecutor,
@@ -127,6 +129,10 @@ class SandboxExecutor(BaseExecutor):
     _run_token: str = field(default_factory=lambda: uuid.uuid4().hex, init=False)
     _spawn_attempted: bool = field(default=False, init=False)
     _stop_task: asyncio.Task | None = field(default=None, init=False, repr=False)
+    last_run_result: AgentRunResult | None = field(default=None, init=False)
+    on_run_result: Callable[[AgentRunResult], None] | None = field(
+        default=None, init=False, repr=False,
+    )
 
     async def run_deployer(
         self,
@@ -135,12 +141,42 @@ class SandboxExecutor(BaseExecutor):
         prompt: str,
         timeout_s: float,
     ) -> "AgentRunResult":
+        from ..base_interface import AgentRunResult
+
+        self.last_run_result = None
         try:
-            return await self._run_deployer(
-                deployer_cls=deployer_cls, prompt=prompt, timeout_s=timeout_s,
-            )
+            try:
+                self.last_run_result = await self._run_deployer(
+                    deployer_cls=deployer_cls, prompt=prompt, timeout_s=timeout_s,
+                )
+            except BaseException as exc:
+                self.last_run_result = AgentRunResult(
+                    status=(
+                        "cancelled" if isinstance(exc, asyncio.CancelledError)
+                        else "timeout" if isinstance(exc, TimeoutError) else "failed"
+                    ),
+                    error="".join(traceback.format_exception(exc)),
+                )
+                raise
+            finally:
+                if self.last_run_result is not None and self.on_run_result is not None:
+                    self.on_run_result(self.last_run_result)
+            return self.last_run_result
         finally:
-            await self.stop_deployer()
+            pending_error = sys.exception()
+            try:
+                await self.stop_deployer()
+            except BaseException as stop_exc:
+                if self.last_run_result is not None:
+                    stop_exc.add_note(
+                        f"Primary agent result: {json.dumps(asdict(self.last_run_result))}",
+                    )
+                if pending_error is not None:
+                    stop_exc.add_note(
+                        "Pre-cleanup exception: "
+                        + "".join(traceback.format_exception(pending_error)),
+                    )
+                raise
 
     async def _run_deployer(
         self,
@@ -237,8 +273,8 @@ class SandboxExecutor(BaseExecutor):
             )
         self._spawn_attempted = True
         spawn_res = await sb.run_command(spawn_cmd, timeout=60)
-        # The launcher backgrounds the entry via setsid+disown and returns in
-        # milliseconds, so a slow cua-server can drop the spawn RPC's SSE
+        # The launcher detaches the supervisor and returns promptly, so a
+        # slow cua-server can drop the spawn RPC's SSE
         # response (rc=-1 "transport error") even though the command actually
         # ran server-side. Don't treat a transport-level failure as fatal:
         # fall through to the PID check, which authoritatively tells us whether
@@ -379,7 +415,6 @@ class SandboxExecutor(BaseExecutor):
             logger.warning(
                 "sandbox: wall budget %.0fs exceeded — killing pid=%s", timeout_s, pid,
             )
-            await self.stop_deployer()
             entry_tail = await self._tail_log(entry_log)
             return AgentRunResult(
                 status="timeout",
@@ -408,7 +443,8 @@ class SandboxExecutor(BaseExecutor):
             err = out.get("error") or "sandbox bootstrap failed"
             return AgentRunResult(
                 status=out.get("status", "failed"),
-                pid=pid,
+                pid=out.get("pid") or pid,
+                exit_code=out.get("exit_code"),
                 duration_s=out.get("duration_s") or duration_s,
                 error=f"{err}\n{tb}" if tb else err,
             )
@@ -648,29 +684,17 @@ def _build_launcher(
 ) -> str:
     """Compose the per-OS launcher script.
 
-    The launcher fires the entry as a fully detached subprocess and
-    immediately writes its PID. After it returns (within seconds), the
-    host's ``run_command`` RPC for the launcher returns — no long
-    connection is held.
+    The launcher detaches the entry, whose own PID is published before
+    starting the worker. The host's ``run_command`` RPC returns within
+    seconds; no long connection is held.
     """
     if sandbox.is_linux:
-        # Idempotent: a dropped spawn-RPC response triggers a host-side retry
-        # that re-runs this launcher. Guard against spawning a second entry by
-        # bailing if the recorded PID is still alive.
         return (
             "#!/bin/bash\n"
             "set -u\n"
-            f"PIDF={shlex.quote(pid_file)}\n"
-            "if [ -s \"$PIDF\" ] && kill -0 \"$(cat \"$PIDF\")\" 2>/dev/null; then\n"
-            "  exit 0\n"
-            "fi\n"
             f"export PYTHONPATH={shlex.quote(ale_src_root)}:${{PYTHONPATH:-}}\n"
-            f"setsid {shlex.quote(python)} -m ale_run.executors._sandbox_entry "
-            f"{shlex.quote(spec_path)} "
-            f"</dev/null >{shlex.quote(entry_log)} 2>&1 &\n"
-            "CHILD=$!\n"
-            "echo \"$CHILD\" > \"$PIDF\"\n"
-            "disown $CHILD 2>/dev/null || true\n"
+            f"exec {shlex.quote(python)} -m ale_run.executors._sandbox_entry "
+            f"{shlex.quote(spec_path)} --launch\n"
         )
     # Windows: PowerShell launcher
     # We add ale_src_root to PYTHONPATH for the spawned python, then

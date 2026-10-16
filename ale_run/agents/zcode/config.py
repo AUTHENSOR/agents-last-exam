@@ -45,10 +45,12 @@ class ZCodeConfig:
     """Git ref of https://github.com/zai-org/ZCode to build."""
 
     context_window: int = 200000
-    """Context capacity advertised for the configured model."""
+    """Context capacity metadata, independent of the output-token override."""
 
-    max_output_tokens: int = 65536
-    """Output capacity advertised for the configured model."""
+    max_output_tokens: int | None = None
+    """Explicit output-token override. None preserves the pinned CLI's own
+    model metadata and request mapping without adding an adapter output limit.
+    """
 
     reasoning_request: dict[str, object] = field(default_factory=dict)
     """Provider-specific reasoning fields, e.g. {"reasoning_effort": "low"}."""
