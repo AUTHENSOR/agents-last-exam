@@ -1,6 +1,8 @@
+import asyncio
 import hashlib
 import json
 import shlex
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +16,21 @@ from tasks.engineering.inner_support_elevation_optimization.verification import 
     EvaluationUnavailableError,
 )
 from test_inner_support_contract import declared_family as declared_family
+from ale_run.tasks.revision import task_revision
+
+
+class ProcessSession:
+    async def run_command(self, command, *, check=True):
+        arguments = shlex.split(command)
+        arguments[-2] = arguments[-2].replace("/opt/ale-kratos/bin/python", sys.executable)
+        process = await asyncio.create_subprocess_exec(
+            *arguments, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        return {"return_code": process.returncode, "stdout": stdout.decode(), "stderr": stderr.decode()}
+
+    async def read_bytes(self, path):
+        pytest.fail("Model/source files must not be downloaded: " + path)
 
 
 @pytest.fixture
@@ -123,7 +140,7 @@ async def test_failed_public_check_scores_zero_with_receipt(monkeypatch, tmp_pat
     monkeypatch.setattr(main, "review_submission", review)
     monkeypatch.setattr(main, "replay_submission", forbidden)
     monkeypatch.setattr(main, "evaluate_delivery", forbidden)
-    assert await main.evaluate(SimpleNamespace(metadata={}), object()) == [0.0]
+    assert await main.evaluate(SimpleNamespace(metadata={}), ProcessSession()) == [0.0]
     gate = json.loads((tmp_path / "evaluation-gate.json").read_text())
     assert gate["evaluation_status"] == "source_noncompliant"
     assert gate["findings"] == findings and not gate["native_replay_completed"]
@@ -166,7 +183,7 @@ async def test_typed_replay_budget_failure_scores_zero_with_receipt(
     monkeypatch.setattr(main, "review_submission", review)
     monkeypatch.setattr(main, "replay_submission", exhausted)
     monkeypatch.setattr(main, "evaluate_delivery", forbidden)
-    assert await main.evaluate(SimpleNamespace(metadata={}), object()) == [0.0]
+    assert await main.evaluate(SimpleNamespace(metadata={}), ProcessSession()) == [0.0]
     gate = json.loads((tmp_path / "evaluation-gate.json").read_text())
     assert gate == {
         "score": 0.0,
@@ -225,42 +242,40 @@ async def test_native_terminal_failure_prevents_presentation_credit(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("damage", [None, "changed", "space"])
 async def test_snapshot_binds_only_source_and_native_inputs(tmp_path, monkeypatch, damage):
-    assets = tmp_path / "assets"
-    assets.mkdir()
-    (assets / "source_manifest.json").write_text(json.dumps({"sha256": {"notes.md": "fixture"}}))
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
     files = {
-        "/original/notes.md": b"original",
+        "sources/notes.md": b"original",
         **{
-            f"/submission/model_family_support_position/{name}": name.encode()
+            f"family/{name}": name.encode()
             for name in ("family.json", "model.mdpa", "Materials.json")
         },
     }
+    paths = {}
+    for key, content in files.items():
+        path = tmp_path / "input" / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+        paths[key] = str(path)
+    original_read = Path.read_bytes
     reads = []
 
-    class Session:
-        async def run_command(self, command, **kwargs):
-            paths = json.loads(shlex.split(shlex.split(command)[-2])[-1])
-            inventory = {
-                key: {"bytes": len(files[path]), "sha256": hashlib.sha256(files[path]).hexdigest()}
-                for key, path in paths.items()
-            }
-            return {
-                "return_code": 0,
-                "stdout": json.dumps(
-                    {"return_code": 0, "stdout": json.dumps(inventory), "stderr": ""}
-                ),
-            }
-
-        async def read_bytes(self, path):
+    def read(path):
+        if str(path) in paths.values():
             reads.append(path)
-            return files[path] + (b"changed" if damage == "changed" else b"")
+            if damage == "changed" and reads.count(path) > 1:
+                return original_read(path) + b"changed"
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read)
 
     async def review(family, original, output):
         assert (family / "model.mdpa").read_bytes() == b"model.mdpa"
         assert (original / "notes.md").read_bytes() == b"original"
+        output.mkdir()
+        (output / "native-review.json").write_text("{}")
         return {"replay_eligible": True}
 
-    monkeypatch.setattr(source_review, "ASSETS", assets)
     monkeypatch.setattr(source_review, "review_native_family", review)
     monkeypatch.setattr(
         source_review.shutil,
@@ -269,12 +284,56 @@ async def test_snapshot_binds_only_source_and_native_inputs(tmp_path, monkeypatc
     )
     if damage:
         with pytest.raises(EvaluationUnavailableError, match="changed|reserve"):
-            await source_review.review_submission(
-                {"input_dir": "/original", "remote_output_dir": "/submission"}, Session()
-            )
+            await source_review.snapshot_and_review(paths, snapshot)
     else:
-        result = await source_review.review_submission(
-            {"input_dir": "/original", "remote_output_dir": "/submission"}, Session()
-        )
-        assert result["replay_eligible"] and len(reads) == 4
-        assert Path(result["evidence_directory"]).is_relative_to(tmp_path)
+        result = await source_review.snapshot_and_review(paths, snapshot)
+        assert result["replay_eligible"] and len(reads) == 8
+        assert (snapshot / "review.json").read_text() == "{}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", [False, True])
+async def test_remote_review_isolated_concurrent_and_equivalent(
+    declared_family, sources, tmp_path, monkeypatch, invalid
+):
+    from tasks.engineering.inner_support_elevation_optimization.scripts import native_input_adapter
+
+    root = Path(source_review.__file__).parent
+    (source_review.ASSETS / "benchmark.json").write_bytes((root / "assets/benchmark.json").read_bytes())
+    manifest = json.loads((source_review.ASSETS / "source_manifest.json").read_text())
+    family_path = declared_family / "family.json"
+    family = json.loads(family_path.read_text())
+    family["source_hashes"] = manifest["sha256"]
+    if invalid:
+        family["monitors"]["CX1"][1] -= 1
+    family_path.write_text(json.dumps(family))
+    original_read = native_input_adapter.read_json
+
+    def read(path):
+        return manifest if Path(path).name == "source_manifest.json" else original_read(path)
+
+    monkeypatch.setattr(native_input_adapter, "read_json", read)
+    expected = await source_review.review_native_family(
+        declared_family, sources, tmp_path / "expected"
+    )
+    output = tmp_path / "guest/output"
+    target = output / "model_family_support_position"
+    target.mkdir(parents=True)
+    for name in ("family.json", "model.mdpa", "Materials.json"):
+        (target / name).write_bytes((declared_family / name).read_bytes())
+    metadata = {"input_dir": str(sources), "remote_output_dir": str(output)}
+    before = task_revision(root)
+    first, second = await asyncio.gather(*[
+        source_review.review_submission(metadata, ProcessSession()) for _ in range(2)
+    ])
+    assert task_revision(root) == before
+    assert first["evidence_directory"] != second["evidence_directory"]
+    for result in (first, second):
+        directory = Path(result["evidence_directory"])
+        assert directory.is_relative_to(output.parent / ".support-evaluation")
+        assert (directory / "source-review-result.json").is_file()
+        assert {key: value for key, value in result.items() if key != "evidence_directory"} == {
+            key: value for key, value in expected.items() if key != "evidence_directory"
+        }
+        assert result["replay_eligible"] is not invalid
+        assert (directory.parent / "family/model.mdpa").read_bytes() == (target / "model.mdpa").read_bytes()

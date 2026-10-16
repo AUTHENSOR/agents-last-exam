@@ -645,22 +645,22 @@ def test_worker_kill_requires_oom_evidence_and_preserves_family_ledger(
 
 @pytest.mark.asyncio
 async def test_task_launch_allocates_available_cpus_and_memory_with_time_left_for_delivery(
-    monkeypatch, tmp_path
+    monkeypatch,
 ):
     import shlex
     from tasks.engineering.inner_support_elevation_optimization import native_task
 
-    evidence = tmp_path / "review"
-    evidence.mkdir()
-    (evidence / "native-review.json").write_text("{}")
-    (tmp_path / "family").mkdir()
-    for name in ("family.json", "model.mdpa", "Materials.json"):
-        (tmp_path / "family" / name).write_text("fixture")
-    (tmp_path / "family/family.json").write_text(json.dumps({"engineering_choices": {}}))
+    evidence = Path("/vm/evaluator/review")
     commands = []
+    files = {}
+    uploads = []
 
-    async def upload(*args):
-        return None
+    async def upload(session, root, payload):
+        assert isinstance(session, Session)
+        uploads.append((str(root), set(payload)))
+        for name, content in payload.items():
+            assert isinstance(content, bytes)
+            files[str(Path(root) / name)] = content
 
     class Session:
         async def run_command(self, command, **kwargs):
@@ -695,7 +695,7 @@ async def test_task_launch_allocates_available_cpus_and_memory_with_time_left_fo
             return "{}"
 
     monkeypatch.setattr(native_task, "upload_files", upload)
-    await native_task.replay_submission(
+    replay = await native_task.replay_submission(
         {"remote_output_dir": "/submission"},
         Session(),
         {"evidence_directory": str(evidence)},
@@ -711,8 +711,16 @@ async def test_task_launch_allocates_available_cpus_and_memory_with_time_left_fo
     assert budget == 6600
     assert f"RuntimeMaxSec={budget + 30}" in launch
     assert {"native_parallel.py", "native_worker.py"}.issubset(native_task.NATIVE_SCRIPTS)
-    receipt = json.loads((evidence / "native-launch.json").read_text())
+    receipt = json.loads(files[str(evidence / "native-launch.json")])
     assert receipt["resources"]["worker_memory_mib"] == 4096
     assert receipt["resources"]["coordinator_memory_mib"] == 4096
     assert receipt["resources"]["aggregate_memory_mib"] == 24576
     assert receipt["resources"]["runtime_budget_s"] == 6600
+    assert replay["remote"] == receipt["remote"] == str(evidence.parent)
+    assert str(evidence.parent / "family") in launch
+    assert str(evidence.parent / "review.json") in launch
+    assert uploads[0][0] == str(evidence.parent)
+    assert all(name.startswith(("scripts/", "assets/")) for name in uploads[0][1])
+    assert all(root == str(evidence) for root, _ in uploads[1:])
+    assert json.loads(files[str(evidence / "family-replay.json")]) == replay["replay"]
+    assert json.loads(files[str(evidence / "native-observations.json")]) == replay["observations"]

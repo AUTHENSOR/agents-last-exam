@@ -1,10 +1,32 @@
 """Bound task commands without extending the DesktopSession protocol."""
 
 import asyncio
+import base64
 import json
 import shlex
+from pathlib import Path
 
 from .verification import EvaluationUnavailableError
+
+
+async def upload_files(session, root, files):
+    for name, content in files.items():
+        path = str(Path(root) / name)
+        for offset in range(0, max(1, len(content)), 32768):
+            payload = base64.b64encode(content[offset : offset + 32768]).decode()
+            mode = "wb" if offset == 0 else "ab"
+            script = (
+                "import base64; from pathlib import Path; "
+                f"path=Path({path!r}); path.parent.mkdir(parents=True,exist_ok=True); "
+                f"path.open({mode!r}).write(base64.b64decode({payload!r}))"
+            )
+            result = await run_command(
+                session, shlex.join(["python3", "-c", script]), timeout=30, check=False
+            )
+            if result.get("return_code", 1):
+                raise EvaluationUnavailableError(
+                    f"Native staging failed for {name}: {result.get('stderr')}"
+                )
 
 
 async def run_command(session, command, *, timeout, check=True):

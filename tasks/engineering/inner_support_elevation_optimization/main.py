@@ -17,6 +17,7 @@ from tasks.engineering.inner_support_elevation_optimization.native_task import (
 from tasks.engineering.inner_support_elevation_optimization.source_review import (
     review_submission,
 )
+from tasks.engineering.inner_support_elevation_optimization.remote_commands import upload_files
 from tasks.engineering.inner_support_elevation_optimization.scripts.native_resources import (
     ReplayBudgetExceeded,
 )
@@ -84,7 +85,7 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
             "native_replay_completed": False,
             "full_task_acceptance": False,
         }
-        (Path(evidence) / "evaluation-gate.json").write_text(json.dumps(gate, indent=2))
+        await upload_files(session, evidence, {"evaluation-gate.json": json.dumps(gate, indent=2).encode()})
         return [0.0]
     try:
         replay = await replay_submission(
@@ -101,7 +102,7 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
             "native_replay_completed": False,
             "full_task_acceptance": False,
         }
-        (Path(evidence) / "evaluation-gate.json").write_text(json.dumps(gate, indent=2))
+        await upload_files(session, evidence, {"evaluation-gate.json": json.dumps(gate, indent=2).encode()})
         return [0.0]
     try:
         result = await asyncio.wait_for(

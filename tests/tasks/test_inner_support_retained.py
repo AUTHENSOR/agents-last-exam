@@ -2,6 +2,7 @@ import hashlib
 import json
 import shlex
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -13,15 +14,17 @@ from tasks.engineering.inner_support_elevation_optimization.verification import 
 
 
 class LocalSession:
-    async def read_bytes(self, path):
-        from pathlib import Path
+    def __init__(self):
+        self.reads = []
 
+    async def read_bytes(self, path):
+        self.reads.append(path)
         return Path(path).read_bytes()
 
     async def read_file(self, path):
-        from pathlib import Path
-
-        return Path(path).read_text()
+        self.reads.append(path)
+        with Path(path).open() as stream:
+            return stream.read()
 
     async def run_command(self, command, *, check=True):
         arguments = shlex.split(command)
@@ -92,18 +95,45 @@ def retained(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_retained_replay_reads_all_five_bound_cases_without_launching_physics(retained):
+async def test_retained_replay_reads_all_five_bound_cases_without_launching_physics(
+    retained, monkeypatch
+):
     descriptor, _, evidence = retained
+    session = LocalSession()
+    read_text = Path.read_text
+    write_text = Path.write_text
+
+    def host_read(path, *args, **kwargs):
+        assert not path.is_relative_to(evidence), "Evidence must be read through the VM session"
+        return read_text(path, *args, **kwargs)
+
+    def host_write(path, *args, **kwargs):
+        assert not path.is_relative_to(evidence), "Evidence must be written through the VM session"
+        return write_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", host_read)
+    monkeypatch.setattr(Path, "write_text", host_write)
     result = await native_task.replay_submission(
         {"_evaluator_retained_replay": str(descriptor)},
-        LocalSession(),
+        session,
         {"replay_eligible": True, "evidence_directory": str(evidence)},
     )
     assert set(result["observations"]) == set(CASES)
-    receipt = json.loads((evidence / "retained-replay-verification.json").read_text())
+    receipt = json.loads(
+        await session.read_file(str(evidence / "retained-replay-verification.json"))
+    )
     assert not receipt["native_histories_replayed"]
     assert receipt["prior_cumulative_native_compute_s"] == 7200
     assert not receipt["fresh_evaluation_runtime_validated"]
+    assert str(evidence / "native-review.json") in session.reads
+    assert (
+        json.loads(await session.read_file(str(evidence / "family-replay.json")))
+        == result["replay"]
+    )
+    assert (
+        json.loads(await session.read_file(str(evidence / "native-observations.json")))
+        == result["observations"]
+    )
 
 
 @pytest.mark.asyncio

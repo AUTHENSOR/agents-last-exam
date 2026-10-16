@@ -1,7 +1,6 @@
 """Linux setup and evaluator-owned native execution for the supported model interface."""
 
 import asyncio
-import base64
 import hashlib
 import json
 import logging
@@ -16,7 +15,7 @@ from .delivery_scoring import (
     normalize_monitor_table,
     score_delivery,
 )
-from .remote_commands import run_command
+from .remote_commands import run_command, upload_files
 from .scripts.native_resources import (
     COORDINATOR_MEMORY_MIB,
     REPLAY_SECONDS,
@@ -50,26 +49,6 @@ PUBLIC_NATIVE_SCRIPTS = {
     "native_member_sections.py": "native_member_sections.py",
     "native_result_adapter.py": "native_result_reader.py",
 }
-
-
-async def upload_files(session, root, files):
-    for name, content in files.items():
-        path = str(Path(root) / name)
-        for offset in range(0, max(1, len(content)), 32768):
-            payload = base64.b64encode(content[offset : offset + 32768]).decode()
-            mode = "wb" if offset == 0 else "ab"
-            script = (
-                "import base64; from pathlib import Path; "
-                f"path=Path({path!r}); path.parent.mkdir(parents=True,exist_ok=True); "
-                f"path.open({mode!r}).write(base64.b64decode({payload!r}))"
-            )
-            result = await run_command(
-                session, shlex.join(["python3", "-c", script]), timeout=30, check=False
-            )
-            if result.get("return_code", 1):
-                raise EvaluationUnavailableError(
-                    f"Native staging failed for {name}: {result.get('stderr')}"
-                )
 
 
 async def setup_native(metadata, session):
@@ -143,9 +122,8 @@ async def replay_submission(metadata, session, review, *, deadline=None):
     evidence = Path(review["evidence_directory"])
     if metadata.get("_evaluator_retained_replay"):
         return await read_retained_replay(metadata["_evaluator_retained_replay"], session, review)
-    snapshot = evidence.parent
     identifier = uuid.uuid4().hex[:16]
-    remote = str(Path(metadata["remote_output_dir"]).parent / ".support-evaluation" / identifier)
+    remote = str(evidence.parent)
     files = {f"scripts/{name}": (ROOT / "scripts" / name).read_bytes() for name in NATIVE_SCRIPTS}
     files.update(
         {
@@ -153,13 +131,6 @@ async def replay_submission(metadata, session, review, *, deadline=None):
             for name in ("benchmark.json", "source_manifest.json")
         }
     )
-    files.update(
-        {
-            f"family/{name}": (snapshot / "family" / name).read_bytes()
-            for name in ("family.json", "model.mdpa", "Materials.json")
-        }
-    )
-    files["review.json"] = (evidence / "native-review.json").read_bytes()
     await upload_files(session, remote, files)
     allocation = await run_command(
         session,
@@ -249,7 +220,7 @@ async def replay_submission(metadata, session, review, *, deadline=None):
             name: hashlib.sha256(content).hexdigest() for name, content in files.items()
         },
     }
-    (evidence / "native-launch.json").write_text(json.dumps(receipt, indent=2))
+    await upload_files(session, evidence, {"native-launch.json": json.dumps(receipt, indent=2).encode()})
     if launched.get("return_code", 1):
         raise EvaluationUnavailableError(
             "Independent native replay could not launch; see native-launch.json"
@@ -300,7 +271,7 @@ print(json.dumps(result))
                     receipt["observed_cgroups"] = json.loads(usage["stdout"])
             except (OSError, ValueError, TimeoutError) as error:
                 receipt["resource_probe_error"] = str(error)
-        (evidence / "native-live.json").write_text(json.dumps(receipt, indent=2))
+        await upload_files(session, evidence, {"native-live.json": json.dumps(receipt, indent=2).encode()})
         if fields.get("MainPID") == "0":
             break
         if time.monotonic() - started > budget + 60:
@@ -315,7 +286,7 @@ print(json.dumps(result))
         raise EvaluationUnavailableError(
             f"Native replay has no terminal receipt: {unit}"
         ) from error
-    (evidence / "family-replay.json").write_text(json.dumps(replay, indent=2))
+    await upload_files(session, evidence, {"family-replay.json": json.dumps(replay, indent=2).encode()})
     exhausted = replay.get("exhausted_resource")
     confirmed_limit = (
         exhausted == "wall_time" and replay.get("elapsed_s", 0) >= REPLAY_SECONDS
@@ -345,7 +316,7 @@ print(json.dumps(result))
     for case in CASES:
         path = replay["cases"][case]["directory"] + "/independent_monitors.json"
         observations[case] = json.loads(await session.read_file(path))
-    (evidence / "native-observations.json").write_text(json.dumps(observations, indent=2))
+    await upload_files(session, evidence, {"native-observations.json": json.dumps(observations, indent=2).encode()})
     return {"remote": remote, "replay": replay, "observations": observations}
 
 
@@ -353,7 +324,7 @@ async def read_retained_replay(descriptor_path, session, review):
     """Reuse evaluator-owned results selected by private operator metadata."""
     evidence = Path(review["evidence_directory"])
     descriptor = json.loads(Path(descriptor_path).read_text())
-    current_review = json.loads((evidence / "native-review.json").read_text())
+    current_review = json.loads(await session.read_file(str(evidence / "native-review.json")))
     if (
         descriptor.get("format") != "support-evaluator-retained-replay-1"
         or not review.get("replay_eligible")
@@ -457,9 +428,11 @@ print(json.dumps({'all_retained_field_hashes_verified':True}))
         "prior_aggregate_resources": replay.get("resources"),
         "fresh_evaluation_runtime_validated": False,
     }
-    (evidence / "retained-replay-verification.json").write_text(json.dumps(record, indent=2))
-    (evidence / "family-replay.json").write_bytes(replay_bytes)
-    (evidence / "native-observations.json").write_text(json.dumps(observations, indent=2))
+    await upload_files(session, evidence, {
+        "retained-replay-verification.json": json.dumps(record, indent=2).encode(),
+        "family-replay.json": replay_bytes,
+        "native-observations.json": json.dumps(observations, indent=2).encode(),
+    })
     return {"remote": remote, "replay": replay, "observations": observations}
 
 
@@ -530,7 +503,7 @@ async def evaluate_delivery(metadata, session, review, replay):
             "Native delivered-result reader could not finish: " + native.get("stderr", "")
         )
     delivered = json.loads(await session.read_file(remote + "/native-delivery.json"))
-    (evidence / "native-delivery.json").write_text(json.dumps(delivered, indent=2))
+    await upload_files(session, evidence, {"native-delivery.json": json.dumps(delivered, indent=2).encode()})
     checks = {
         "native_results_agree": True,
         "raw_monitors_agree": True,
@@ -587,5 +560,5 @@ async def evaluate_delivery(metadata, session, review, replay):
         native_replay_directory=remote,
         engineering_caveats=caveats,
     )
-    (evidence / "score.json").write_text(json.dumps(record, indent=2))
+    await upload_files(session, evidence, {"score.json": json.dumps(record, indent=2).encode()})
     return record

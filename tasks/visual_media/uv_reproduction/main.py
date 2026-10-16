@@ -4,11 +4,11 @@ import asyncio
 import json
 import logging
 import os
-import shutil
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import Any
+from uuid import uuid4
 
 import cua_bench as cb
 
@@ -637,21 +637,12 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
             logger.warning("Temporary UV contract evaluation failed", exc_info=True)
             return [0.0]
 
-    remote_eval_dir = _remote_child(REMOTE_TEMP_ROOT, meta["task_tag"])
+    remote_eval_dir = _remote_child(REMOTE_TEMP_ROOT, meta["task_tag"], uuid4().hex)
     remote_scripts_dir = _remote_child(remote_eval_dir, "scripts")
     remote_results_dir = _remote_child(remote_eval_dir, "results")
     remote_report = _remote_child(remote_results_dir, "hard_eval_report.json")
     await session.interface.create_dir(remote_eval_dir)
-    await session.run_command(
-        "powershell -NoProfile -Command "
-        + repr(
-            f"$ErrorActionPreference='Stop'; "
-            f"if (Test-Path -LiteralPath '{remote_results_dir}') "
-            f"{{ Remove-Item -LiteralPath '{remote_results_dir}' -Recurse -Force -ErrorAction SilentlyContinue }}; "
-            f"New-Item -ItemType Directory -Path '{remote_results_dir}' -Force | Out-Null"
-        ),
-        check=False,
-    )
+    await session.interface.create_dir(remote_results_dir)
     await _upload_scripts(session, remote_scripts_dir)
     remote_args = [
         "--output-dir",
@@ -726,24 +717,22 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
     if gate and not all(bool(value) for value in gate.values()):
         hard_fail = True
     frame_pairs = report.get("frame_pairs", [])
-    local_tmp = TASK_DIR / ".tmp_soft_eval" / meta["task_tag"]
-    if local_tmp.exists():
-        shutil.rmtree(local_tmp)
-    local_tmp.mkdir(parents=True, exist_ok=True)
     localized_pairs = []
-    for idx, pair in enumerate(frame_pairs):
-        ref_path = local_tmp / f"reference_{idx}_{pair['view']}.png"
-        cand_path = local_tmp / f"candidate_{idx}_{pair['view']}.png"
-        ref_path.write_bytes(await session.read_bytes(pair["reference_image"]))
-        cand_path.write_bytes(await session.read_bytes(pair["candidate_image"]))
+    for pair in frame_pairs:
         localized_pairs.append(
             {
                 "view": pair["view"],
-                "reference_image": str(ref_path),
-                "candidate_image": str(cand_path),
+                "reference_image": await session.read_bytes(pair["reference_image"]),
+                "candidate_image": await session.read_bytes(pair["candidate_image"]),
             }
         )
-    soft_score = run_local_soft_eval(localized_pairs, local_tmp)
+    soft_report = {}
+    soft_score = run_local_soft_eval(localized_pairs, report_out=soft_report)
+    if soft_report:
+        await session.write_file(
+            _remote_child(remote_results_dir, "soft_eval_report.json"),
+            json.dumps(soft_report, ensure_ascii=False, indent=2),
+        )
     final_score = hard_score if hard_fail else (0.3 * hard_score + 0.7 * soft_score)
     logger.info(
         "uv_reproduction eval task=%s hard=%.4f soft=%.4f final=%.4f",

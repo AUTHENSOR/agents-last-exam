@@ -73,12 +73,11 @@ max_attempts: 3</code></pre>
       its own run directory.
     </p>
     <p>
-      Known limitation: excavation-support and UV-reproduction evaluation
-      writes local review files inside the task folders, changing their hashes.
-      After evaluation finishes, preserve and move
-      <code>tasks/engineering/inner_support_elevation_optimization/scripts/evidence/task-source-reviews/</code>
-      and <code>tasks/visual_media/uv_reproduction/.tmp_soft_eval/</code> outside
-      the checkout before resuming. These generated files are not frozen task source.
+      Excavation-support and UV-reproduction evaluation use separate sandbox
+      directories for each invocation. Model snapshots, renders and diagnostic
+      receipts stay in the sandbox; host-side scoring uses memory without
+      writing to task folders or changing their hashes. Use
+      <code>cleanup_mode: keep</code> to inspect sandbox evidence before releasing it.
     </p>
     <h3>Disable resume for one invocation</h3>
     <pre><code>uv run python -m ale_run run my_experiment.yaml --disable-resume</code></pre>

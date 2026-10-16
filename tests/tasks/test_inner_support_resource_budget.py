@@ -1,5 +1,6 @@
 import json
 import shlex
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -30,14 +31,8 @@ def resource_receipt(resource):
 
 
 @pytest.fixture
-def host_replay(tmp_path, monkeypatch):
-    evidence = tmp_path / "review"
-    evidence.mkdir()
-    (evidence / "native-review.json").write_text("{}")
-    family = tmp_path / "family"
-    family.mkdir()
-    for name in ("family.json", "model.mdpa", "Materials.json"):
-        (family / name).write_text("{}")
+def host_replay(monkeypatch):
+    evidence = Path("/vm/evaluator/review")
     control = SimpleNamespace(
         evidence=evidence,
         review={"replay_eligible": True, "evidence_directory": str(evidence)},
@@ -47,10 +42,16 @@ def host_replay(tmp_path, monkeypatch):
         status={"MainPID": "0", "ExecMainCode": "1", "ExecMainStatus": "1", "Result": "exit-code"},
         commands=[],
         reads=[],
+        files={str(evidence / "native-review.json"): b"{}"},
+        uploads=[],
     )
 
-    async def upload(*args):
-        pass
+    async def upload(session, root, files):
+        assert session is control.session
+        control.uploads.append((str(root), set(files)))
+        for name, content in files.items():
+            assert isinstance(content, bytes)
+            control.files[str(Path(root) / name)] = content
 
     async def command(session, command, **kwargs):
         arguments = shlex.split(command)
@@ -81,6 +82,7 @@ def host_replay(tmp_path, monkeypatch):
 
     control.session = Session()
     monkeypatch.setattr(native_task, "upload_files", upload)
+    monkeypatch.setattr(main, "upload_files", upload)
     monkeypatch.setattr(native_task, "run_command", command)
     monkeypatch.setattr(main, "review_submission", review)
     monkeypatch.setattr(main, "evaluate_delivery", forbidden)
@@ -108,12 +110,14 @@ async def test_trusted_resource_receipt_raises_typed_failure_and_scores_zero(
     assert raised.value.resource == resource
     assert str(raised.value) == control.receipt["error"]
     assert await main.evaluate(SimpleNamespace(metadata=control.metadata), control.session) == [0.0]
-    gate = json.loads((control.evidence / "evaluation-gate.json").read_text())
+    gate = json.loads(control.files[str(control.evidence / "evaluation-gate.json")])
     assert gate["evaluation_status"] == "resource_budget_exceeded"
     assert gate["exhausted_resource"] == resource
     assert gate["reason"] == control.receipt["error"]
     assert not gate["native_replay_completed"] and not gate["full_task_acceptance"]
-    assert json.loads((control.evidence / "family-replay.json").read_text()) == control.receipt
+    assert (
+        json.loads(control.files[str(control.evidence / "family-replay.json")]) == control.receipt
+    )
     assert all(path.endswith("/family-replay.json") for path in control.reads)
 
 
@@ -178,8 +182,10 @@ async def test_unconfirmed_resource_failures_remain_unavailable(host_replay, res
     control.receipt = {**resource_receipt(resource), **changes}
     with pytest.raises(EvaluationUnavailableError, match="Native replay incomplete"):
         await main.evaluate(SimpleNamespace(metadata=control.metadata), control.session)
-    assert not (control.evidence / "evaluation-gate.json").exists()
-    assert json.loads((control.evidence / "family-replay.json").read_text()) == control.receipt
+    assert str(control.evidence / "evaluation-gate.json") not in control.files
+    assert (
+        json.loads(control.files[str(control.evidence / "family-replay.json")]) == control.receipt
+    )
 
 
 @pytest.mark.asyncio
@@ -203,8 +209,8 @@ async def test_abnormal_service_exit_cannot_become_a_solver_zero(host_replay, re
     control.status.update(status)
     with pytest.raises(EvaluationUnavailableError, match="Native replay incomplete"):
         await main.evaluate(SimpleNamespace(metadata=control.metadata), control.session)
-    assert not (control.evidence / "evaluation-gate.json").exists()
-    live = json.loads((control.evidence / "native-live.json").read_text())
+    assert str(control.evidence / "evaluation-gate.json") not in control.files
+    live = json.loads(control.files[str(control.evidence / "native-live.json")])
     assert live["status"] == control.status
 
 
@@ -218,9 +224,9 @@ async def test_explicit_shortened_budget_cannot_score_zero(host_replay, resource
     control.receipt["runtime_budget_s"] = receipt_budget
     with pytest.raises(EvaluationUnavailableError, match="Native replay incomplete"):
         await main.evaluate(SimpleNamespace(metadata=control.metadata), control.session)
-    launch = json.loads((control.evidence / "native-launch.json").read_text())
+    launch = json.loads(control.files[str(control.evidence / "native-launch.json")])
     assert launch["resources"]["runtime_budget_s"] == 120
-    assert not (control.evidence / "evaluation-gate.json").exists()
+    assert str(control.evidence / "evaluation-gate.json") not in control.files
 
 
 @pytest.mark.asyncio
@@ -232,7 +238,7 @@ async def test_host_refuses_any_allocation_other_than_five_slots(host_replay, sl
         await main.evaluate(SimpleNamespace(metadata=control.metadata), control.session)
     assert len(control.commands) == 1
     assert not control.reads
-    assert not (control.evidence / "evaluation-gate.json").exists()
+    assert str(control.evidence / "evaluation-gate.json") not in control.files
 
 
 @pytest.mark.asyncio
@@ -248,7 +254,7 @@ async def test_short_deadline_refuses_launch_without_reducing_budget(
         )
     assert len(control.commands) == 1
     assert not control.reads
-    assert not (control.evidence / "native-launch.json").exists()
+    assert str(control.evidence / "native-launch.json") not in control.files
 
 
 @pytest.mark.asyncio
@@ -259,7 +265,7 @@ async def test_out_of_range_diagnostic_budget_cannot_launch(host_replay, budget)
     with pytest.raises(EvaluationUnavailableError, match="Native replay budget"):
         await main.evaluate(SimpleNamespace(metadata=control.metadata), control.session)
     assert len(control.commands) == 1
-    assert not (control.evidence / "evaluation-gate.json").exists()
+    assert str(control.evidence / "evaluation-gate.json") not in control.files
 
 
 @pytest.mark.asyncio
@@ -283,8 +289,14 @@ async def test_successful_replay_reads_all_cases_at_exact_launch_deadline(
     assert replay["observations"] == {case: {"fixture_case": case} for case in native_task.CASES}
     assert len(control.reads) == 6
     assert (
-        json.loads((control.evidence / "native-observations.json").read_text())
+        json.loads(control.files[str(control.evidence / "native-observations.json")])
         == replay["observations"]
     )
-    launch = json.loads((control.evidence / "native-launch.json").read_text())
+    launch = json.loads(control.files[str(control.evidence / "native-launch.json")])
     assert launch["resources"]["runtime_budget_s"] == budget
+    assert launch["remote"] == str(control.evidence.parent)
+    assert str(control.evidence.parent / "family") in launch["command"]
+    assert str(control.evidence.parent / "review.json") in launch["command"]
+    assert control.uploads[0][0] == str(control.evidence.parent)
+    assert all(name.startswith(("scripts/", "assets/")) for name in control.uploads[0][1])
+    assert all(root == str(control.evidence) for root, _ in control.uploads[1:])

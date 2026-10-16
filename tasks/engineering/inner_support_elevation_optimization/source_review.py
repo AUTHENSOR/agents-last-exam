@@ -6,11 +6,11 @@ import json
 import math
 import shlex
 import shutil
-import tempfile
+import uuid
 from pathlib import Path
 
 from .scripts.native_model_contract import CONTRACT, validate_model
-from .remote_commands import run_command
+from .remote_commands import run_command, upload_files
 from .observation_evidence import build_controller_evidence
 from .verification import CASES, EvaluationUnavailableError, verify_source_bundle
 
@@ -197,6 +197,37 @@ async def review_native_family(family_path, original_sources, output):
     return record
 
 
+async def snapshot_and_review(paths, snapshot):
+    snapshot = Path(snapshot)
+    inventory = {}
+    for key, name in paths.items():
+        path = Path(name)
+        if not path.is_absolute() or path.is_symlink() or not path.is_file():
+            raise ValueError("Missing or unsafe supported native input: " + name)
+        if path.stat().st_size > 100000000:
+            raise ValueError("Supported input size exceeded: " + name)
+        inventory[key] = {
+            "bytes": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+    required = sum(row["bytes"] for row in inventory.values())
+    if shutil.disk_usage(snapshot).free < 8 * 1024**3 + required + 32 * 1024**2:
+        raise EvaluationUnavailableError("Source review snapshot would cross evaluator disk reserve")
+    for key, name in paths.items():
+        content = Path(name).read_bytes()
+        if hashlib.sha256(content).hexdigest() != inventory[key]["sha256"]:
+            raise EvaluationUnavailableError("Submitted inputs changed during source-review snapshot")
+        target = snapshot / key
+        target.parent.mkdir(exist_ok=True)
+        target.write_bytes(content)
+    record = await review_native_family(
+        snapshot / "family", snapshot / "sources", snapshot / "review"
+    )
+    if record["replay_eligible"]:
+        shutil.copyfile(snapshot / "review/native-review.json", snapshot / "review.json")
+    return record
+
+
 async def review_submission(metadata, session):
     if session is None or not {"input_dir", "remote_output_dir"}.issubset(metadata):
         raise EvaluationUnavailableError(
@@ -211,49 +242,34 @@ async def review_submission(metadata, session):
             for name in ("family.json", "model.mdpa", "Materials.json")
         }
     )
-    check = """import hashlib,json,sys
-from pathlib import Path
-result={}
-for key,name in json.loads(sys.argv[1]).items():
-    path=Path(name)
-    if not path.is_absolute() or path.is_symlink() or not path.is_file():
-        raise ValueError('Missing or unsafe supported native input: '+name)
-    if path.stat().st_size>100000000:
-        raise ValueError('Supported input size exceeded: '+name)
-    result[key]={'bytes':path.stat().st_size,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
-print(json.dumps(result))
-"""
-    stat = await run_command(
-        session, shlex.join(["python3", "-c", check, json.dumps(paths)]), timeout=30, check=False
+    snapshot = str(
+        Path(metadata["remote_output_dir"]).parent / ".support-evaluation" / uuid.uuid4().hex
     )
-    if stat.get("return_code", 1):
-        raise EvaluationUnavailableError(
-            "Submitted native input adapter could not prepare source review: "
-            + stat.get("stderr", "")
-        )
-    inventory = json.loads(stat["stdout"])
-    root = ASSETS.parent / "scripts/evidence/task-source-reviews"
-    root.mkdir(parents=True, exist_ok=True)
-    required = sum(row["bytes"] for row in inventory.values())
-    if shutil.disk_usage(root).free < 8 * 1024**3 + required + 32 * 1024**2:
-        raise EvaluationUnavailableError(
-            "Source review snapshot would cross evaluator disk reserve"
-        )
-    snapshot = Path(tempfile.mkdtemp(prefix="review-", dir=root))
-    for key, remote in paths.items():
-        content = await session.read_bytes(remote)
-        if hashlib.sha256(content).hexdigest() != inventory[key]["sha256"]:
-            raise EvaluationUnavailableError(
-                "Submitted inputs changed during source-review snapshot"
-            )
-        target = snapshot / key
-        target.parent.mkdir(exist_ok=True)
-        target.write_bytes(content)
-    record = await review_native_family(
-        snapshot / "family", snapshot / "sources", snapshot / "review"
+    root = Path(__file__).parent
+    names = (
+        "source_review.py", "remote_commands.py", "observation_evidence.py", "verification.py",
+        "scripts/native_model_contract.py", "scripts/native_input_adapter.py",
+        "scripts/native_member_sections.py",
     )
-    record["evidence_directory"] = str(snapshot / "review")
-    return record
+    files = {"evaluator/" + name: (root / name).read_bytes() for name in names}
+    files.update({"evaluator/__init__.py": b"", "evaluator/scripts/__init__.py": b""})
+    files.update({
+        "evaluator/assets/" + name: (ASSETS / name).read_bytes()
+        for name in ("source_manifest.json", "benchmark.json")
+    })
+    await upload_files(session, snapshot, files)
+    script = (
+        "import asyncio,json,sys; "
+        "sys.path.insert(0,sys.argv[1]); "
+        "from evaluator.source_review import snapshot_and_review; "
+        "print(json.dumps(asyncio.run(snapshot_and_review(json.loads(sys.argv[2]),sys.argv[1]))))"
+    )
+    result = await run_command(
+        session,
+        shlex.join(["/opt/ale-kratos/bin/python", "-c", script, snapshot, json.dumps(paths)]),
+        timeout=240,
+    )
+    return json.loads(result["stdout"])
 
 
 if __name__ == "__main__":

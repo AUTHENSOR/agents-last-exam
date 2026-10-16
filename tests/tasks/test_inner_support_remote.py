@@ -5,7 +5,11 @@ import pytest
 from computer.interface.models import CommandResult
 from cua_bench.computers.remote import RemoteDesktopSession
 
-from tasks.engineering.inner_support_elevation_optimization.remote_commands import run_command
+from tasks.engineering.inner_support_elevation_optimization import remote_commands
+from tasks.engineering.inner_support_elevation_optimization.remote_commands import (
+    run_command,
+    upload_files,
+)
 from tasks.engineering.inner_support_elevation_optimization.verification import (
     EvaluationUnavailableError,
 )
@@ -50,3 +54,42 @@ async def test_actual_session_preserves_stdout_stderr_and_raises_checked_failure
 async def test_remote_deadline_is_unavailable_not_success(session):
     with pytest.raises(EvaluationUnavailableError, match="exited 124"):
         await run_command(session, "exec sleep 1", timeout=0.01, check=False)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [0, 32767, 32768, 32769, 65539])
+async def test_remote_upload_preserves_binary_chunks_and_replaces_existing_files(
+    session, tmp_path, size
+):
+    root = tmp_path / "VM evidence with spaces"
+    content = bytes(index % 256 for index in range(size))
+    await upload_files(session, root, {"nested/receipt.bin": b"stale data" * 100})
+    await upload_files(session, root, {"nested/receipt.bin": content, "empty.json": b""})
+    assert (root / "nested/receipt.bin").read_bytes() == content
+    assert (root / "empty.json").read_bytes() == b""
+
+
+@pytest.mark.asyncio
+async def test_remote_upload_stops_on_failed_chunk_without_claiming_success(monkeypatch):
+    commands = []
+    session = object()
+
+    async def command(actual_session, text, *, timeout, check):
+        assert actual_session is session
+        assert timeout == 30 and check is False
+        commands.append(text)
+        return {
+            "return_code": 0 if len(commands) == 1 else 1,
+            "stdout": "",
+            "stderr": "fixture disk full",
+        }
+
+    monkeypatch.setattr(remote_commands, "run_command", command)
+    with pytest.raises(EvaluationUnavailableError, match="receipt.bin.*fixture disk full"):
+        await upload_files(
+            session,
+            "/vm/evaluator/review",
+            {"receipt.bin": b"x" * 65537, "must-not-write.json": b"{}"},
+        )
+    assert len(commands) == 2
+    assert "must-not-write.json" not in "".join(commands)
