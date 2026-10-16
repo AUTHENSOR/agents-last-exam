@@ -5,6 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -1043,9 +1044,13 @@ def test_assemble_hf_disk_resumes_completed_parts(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolve_hf_disk_adopts_matching_existing_file(
+@pytest.mark.parametrize("cached_data", [b"qcow2", b"wrong"])
+@pytest.mark.parametrize("verifiable_etag", [False, True])
+async def test_resolve_hf_disk_adopts_only_verified_existing_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    cached_data: bytes,
+    verifiable_etag: bool,
 ) -> None:
     source = "hf://agents-last-exam/ale-images-qcow2/ale-win10.qcow2"
     provider = QemuProvider(
@@ -1063,12 +1068,13 @@ async def test_resolve_hf_disk_adopts_matching_existing_file(
     snapshot = provider.config.snapshots["cpu-free"]
     destination = snapshot.image_cache_dir / "ale-win10.qcow2"
     destination.parent.mkdir(parents=True)
-    destination.write_bytes(b"qcow2")
+    destination.write_bytes(cached_data)
+    downloads = []
 
     class Metadata:
         size = 5
         commit_hash = "deadbeef"
-        etag = "etag"
+        etag = hashlib.sha256(b"qcow2").hexdigest() if verifiable_etag else "opaque-etag"
 
     import huggingface_hub
 
@@ -1087,16 +1093,48 @@ async def test_resolve_hf_disk_adopts_matching_existing_file(
 
     monkeypatch.setattr(huggingface_hub, "get_hf_file_metadata", fake_get_hf_file_metadata)
 
-    def fail_download(**kwargs):
-        raise AssertionError("matching existing disk should not be downloaded")
+    def fake_download(**kwargs):
+        assert kwargs["force_download"] is True
+        downloads.append(kwargs["filename"])
+        destination.write_bytes(b"qcow2")
+        return str(destination)
 
-    monkeypatch.setattr(huggingface_hub, "hf_hub_download", fail_download)
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", fake_download)
 
     resolved = await provider._resolve_disk(snapshot)
 
     assert resolved == destination
+    assert resolved.read_bytes() == b"qcow2"
+    adopted = cached_data == b"qcow2" and verifiable_etag
+    assert downloads == ([] if adopted else ["ale-win10.qcow2"])
     sidecar = destination.with_name(f"{destination.name}.ale-source.json")
     assert json.loads(sidecar.read_text())["commit_hash"] == "deadbeef"
+
+
+@pytest.mark.asyncio
+async def test_acquire_cleans_up_when_runner_image_inspection_fails(tmp_path, monkeypatch):
+    base_qcow2 = tmp_path / "disk.qcow2"
+    base_qcow2.write_bytes(b"fixture")
+    provider = QemuProvider(_provider_config(tmp_path, base_qcow2))
+    provider._preflight_done = True
+    for method in ("_create_overlay", "_start_container", "_configure_hairpin_nat"):
+        monkeypatch.setattr(provider, method, AsyncMock())
+    monkeypatch.setattr(qemu_module, "_get_host_port", AsyncMock(return_value=15000))
+    monkeypatch.setattr(qemu_module, "_wait_cua_or_container_exit", AsyncMock(return_value=True))
+    process = AsyncMock(return_value=(1, "", "runner inspect failed"))
+    monkeypatch.setattr(qemu_module, "_run_process", process)
+    remove = AsyncMock()
+    monkeypatch.setattr(qemu_module, "_remove_container", remove)
+
+    with pytest.raises(RuntimeError, match="runner inspect failed"):
+        await provider.acquire(SandboxSpec(snapshot="cpu-free"))
+
+    process.assert_awaited_once_with(
+        "docker", "inspect", "--format", "{{.Image}}", remove.await_args.args[0],
+    )
+    remove.assert_awaited_once()
+    assert not list((tmp_path / "qemu" / "runtime" / "slots").iterdir())
+    assert base_qcow2.read_bytes() == b"fixture"
 
 
 @pytest.mark.asyncio

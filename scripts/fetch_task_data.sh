@@ -19,7 +19,7 @@ usage() {
     'Default destination: task-data-v1.1; --legacy selects task-data instead.' \
     'Legacy also requires explicit historical revision/hash pins; no fallback to main.' \
     'DEST must be absent or empty, on ext2/ext3/ext4, xfs, or btrfs storage.' \
-    'Requires gated HF access, huggingface-cli (or hf), and GNU/Linux core tools.'
+    'Requires gated HF access, hf, and GNU/Linux core tools.'
 }
 
 fail() {
@@ -67,12 +67,12 @@ fi
 for tool in realpath findmnt df free pgrep stat find mktemp tar sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required command not found: $tool"
 done
-if command -v huggingface-cli >/dev/null 2>&1; then
-  HF_CLI=huggingface-cli
-elif command -v hf >/dev/null 2>&1; then
+if command -v hf >/dev/null 2>&1; then
   HF_CLI=hf
+elif command -v huggingface-cli >/dev/null 2>&1; then
+  HF_CLI=huggingface-cli
 else
-  fail 'huggingface-cli or hf is required; install huggingface_hub and authenticate for gated access'
+  fail 'hf is required; install huggingface_hub and authenticate for gated access'
 fi
 [[ ! -L "$DEST" ]] || fail 'Destination must not be a symlink'
 DEST="$(realpath -m -- "$DEST")"

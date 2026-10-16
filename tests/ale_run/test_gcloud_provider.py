@@ -1,4 +1,6 @@
 import json
+import shlex
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -164,3 +166,148 @@ def test_loader_forwards_gcloud_image_revision():
     provider = gcloud.GcloudProvider(environment.provider_specs["gcloud"].config)
 
     assert provider.config.snapshots["cpu-free"].image_revision == "1234567890123456789"
+
+
+@pytest.fixture
+def expansion_session(monkeypatch):
+    from cua_bench.computers import remote
+
+    state = SimpleNamespace(
+        growpart_rc=0,
+        resize_rc=0,
+        disk_bytes=200 * 1024**3,
+        partition_bytes=200 * 1024**3 - 2 * 1024**2,
+        filesystem_bytes=195 * 1024**3,
+        fstype="ext4",
+        legacy_lsblk=False,
+    )
+
+    async def run_command(command, *, check):
+        assert check is False
+        executable, option, script = shlex.split(command)
+        assert (executable, option) == ("bash", "-lc")
+        stubs = f"""
+findmnt() {{
+  case "$*" in
+    '-n -o SOURCE /') echo /dev/sda1 ;;
+    '-n -o FSTYPE /') echo {state.fstype} ;;
+    *) return 99 ;;
+  esac
+}}
+lsblk() {{
+  case "$*" in
+    '-no PKNAME /dev/sda1') echo sda ;;
+    '-no PARTN /dev/sda1')
+      if {str(state.legacy_lsblk).lower()}; then return 1; fi
+      echo 1 ;;
+    '-bdno SIZE /dev/sda') echo {state.disk_bytes} ;;
+    '-bno SIZE /dev/sda1'|'-bdno SIZE /dev/sda1') echo {state.partition_bytes} ;;
+    '-dno START /dev/sda1')
+      if {str(state.legacy_lsblk).lower()}; then return 1; fi
+      echo 2048 ;;
+    *) return 99 ;;
+  esac
+}}
+sudo() {{
+  case "$*" in
+    'growpart /dev/sda 1') return {state.growpart_rc} ;;
+    'resize2fs /dev/sda1'|'xfs_growfs /') return {state.resize_rc} ;;
+    *) return 99 ;;
+  esac
+}}
+df() {{
+  case "$*" in
+    '-B1 --output=size /') printf 'Size\\n{state.filesystem_bytes}\\n' ;;
+    '-h /') echo expanded ;;
+    *) return 99 ;;
+  esac
+}}
+readlink() {{
+  test "$*" = '-f /dev/sda1' || return 99
+  echo /dev/sda1
+}}
+cat() {{
+  case "$*" in
+    /sys/class/block/sda1/partition) echo 1 ;;
+    /sys/class/block/sda1/start) echo 2048 ;;
+    *) return 99 ;;
+  esac
+}}
+"""
+        result = subprocess.run(
+            ["bash", "-c", stubs + script], capture_output=True, text=True, timeout=5,
+        )
+        return {
+            "return_code": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    state.command = AsyncMock(side_effect=run_command)
+    monkeypatch.setattr(
+        remote, "RemoteDesktopSession", lambda **kwargs: SimpleNamespace(run_command=state.command),
+    )
+    monkeypatch.setattr(gcloud, "_init_computer_skip_wait", lambda session: None)
+    return state
+
+
+@pytest.mark.parametrize("growpart_rc", [0, 1])
+@pytest.mark.parametrize("fstype", ["ext4", "xfs"])
+async def test_linux_root_expansion_accepts_grown_or_already_full_disk(
+    expansion_session, growpart_rc, fstype,
+):
+    expansion_session.growpart_rc = growpart_rc
+    expansion_session.fstype = fstype
+
+    await gcloud.GcloudProvider._expand_linux_root_disk("http://unused")
+
+    expansion_session.command.assert_awaited_once()
+
+
+async def test_linux_root_expansion_supports_legacy_lsblk(expansion_session):
+    expansion_session.legacy_lsblk = True
+
+    await gcloud.GcloudProvider._expand_linux_root_disk("http://unused")
+
+
+@pytest.mark.parametrize("growpart_rc", [0, 1, 2, 127])
+@pytest.mark.parametrize("disk_gb", [101, 200])
+async def test_linux_root_expansion_rejects_partition_left_at_old_size(
+    expansion_session, growpart_rc, disk_gb,
+):
+    expansion_session.growpart_rc = growpart_rc
+    expansion_session.disk_bytes = disk_gb * 1024**3
+    expansion_session.partition_bytes = 100 * 1024**3
+    expansion_session.filesystem_bytes = 98 * 1024**3
+
+    with pytest.raises(RuntimeError, match="failed to expand Linux root disk"):
+        await gcloud.GcloudProvider._expand_linux_root_disk("http://unused")
+
+
+@pytest.mark.parametrize("failure", ["growpart", "resize", "small_filesystem", "unsupported"])
+async def test_linux_root_expansion_rejects_errors_even_when_partition_is_full(
+    expansion_session, failure,
+):
+    if failure == "growpart":
+        expansion_session.growpart_rc = 2
+    elif failure == "resize":
+        expansion_session.resize_rc = 1
+    elif failure == "small_filesystem":
+        expansion_session.filesystem_bytes = 100 * 1024**3
+    else:
+        expansion_session.fstype = "btrfs"
+
+    with pytest.raises(RuntimeError, match="failed to expand Linux root disk"):
+        await gcloud.GcloudProvider._expand_linux_root_disk("http://unused")
+
+
+async def test_acquire_deletes_vm_on_expansion_failure(acquisition, monkeypatch):
+    acquisition.config["snapshots"]["cpu-free"]["boot_disk_size_gb"] = 200
+    expand = AsyncMock(side_effect=RuntimeError("failed to expand Linux root disk"))
+    monkeypatch.setattr(gcloud.GcloudProvider, "_expand_linux_root_disk", expand)
+
+    with pytest.raises(RuntimeError, match="failed to expand Linux root disk"):
+        await gcloud.GcloudProvider(acquisition.config).acquire(SandboxSpec(snapshot="cpu-free"))
+
+    expand.assert_awaited_once_with("http://192.0.2.1:5000")
+    assert acquisition.commands.await_args_list[-1].args[:3] == ("compute", "instances", "delete")

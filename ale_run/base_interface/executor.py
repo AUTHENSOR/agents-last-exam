@@ -7,8 +7,8 @@ The framework recognises three Executor types (in :mod:`ale_run.executors`):
                              ship the deployer + ALE source into it,
                              entrypoint runs the deployer in-container.
 * :class:`SandboxExecutor` — scp the ALE source to the sandbox VM,
-                             ``cua.python_exec`` a bootstrap that runs
-                             the deployer inside the sandbox itself.
+                             detach a supervisor that runs the deployer
+                             inside the sandbox itself.
 
 What the executor IS to a deployer
 ----------------------------------
@@ -226,9 +226,9 @@ class BaseExecutor(abc.ABC):
           constructs a local-flavored Executor inside the container,
           and runs it. Returns the container's ``_result.json``.
         * **SandboxExecutor**: scp the ``ale_run/`` tree into the
-          sandbox, ``cua.python_exec`` a bootstrap that imports the
-          deployer + constructs a local-flavored Executor in-sandbox
-          and runs it. Returns the bootstrap's result dict.
+          sandbox, detach a supervisor that imports the deployer +
+          constructs a local-flavored Executor in-sandbox and runs it.
+          Returns the supervisor's result dict.
 
         On crash inside the substrate, the implementation MUST surface
         the traceback in :attr:`AgentRunResult.error` (and pull any

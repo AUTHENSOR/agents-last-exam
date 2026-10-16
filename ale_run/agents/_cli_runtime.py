@@ -144,12 +144,6 @@ async def _node_version(node: str) -> tuple[int, ...]:
     return installed if probe.returncode == 0 else ()
 
 
-async def require_node(node: str, minimum: tuple[int, int, int]) -> None:
-    if await _node_version(node) < minimum:
-        required = ".".join(str(part) for part in minimum)
-        raise RuntimeError(f"CLI requires Node >= {required}; upgrade the sandbox runtime")
-
-
 async def ensure_cli_node(node: str, npm: str, minimum: tuple[int, int, int]) -> str:
     """Upgrade only these CLI adapters to a pinned, user-writable Node runtime."""
     if await _node_version(node) >= minimum:

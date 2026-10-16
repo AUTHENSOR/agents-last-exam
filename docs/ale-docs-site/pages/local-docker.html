@@ -63,7 +63,7 @@ uv sync --all-packages</code></pre>
       <a href="https://huggingface.co/datasets/agents-last-exam/agents-last-exam-data-archive">ALE
       task-data archive</a>, authenticate with Hugging Face, then run:
     </p>
-    <pre><code>huggingface-cli login
+    <pre><code>uv run hf auth login
 REVISION=$(jq -r '.huggingface.archive.revision' releases/v1.1/assets.json)
 SHA256=$(jq -r '.task_data.archive_sha256' releases/v1.1/assets.json)
 scripts/fetch_task_data.sh --revision "$REVISION" --sha256 "$SHA256"</code></pre>

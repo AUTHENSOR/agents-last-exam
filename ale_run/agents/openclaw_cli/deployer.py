@@ -52,13 +52,6 @@ _TERM_GRACE_S = 2.0
 _AGENT_ID = "main"
 _PLUGIN_PROVIDER_IDS = frozenset({"anthropic", "openai", "openrouter", "zai"})
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_STDERR_PREAMBLE_PREFIXES = (
-    "[agent/embedded] session file repaired",
-    "[agent/embedded] embedded run agent end",
-    "[agent/embedded] embedded run failover decision",
-    "[diagnostic] lane task error",
-    "[model-fallback/decision]",
-)
 
 
 class OpenClawCliDeployer(BaseAgentDeployer):
@@ -1000,15 +993,7 @@ class OpenClawCliDeployer(BaseAgentDeployer):
                 if stderr_size > 0 and stderr_size != last_stderr_size:
                     last_stderr_size = stderr_size
                     candidate = _parse_stderr_json(_read_text_tolerant(stderr_log))
-                    if (
-                        isinstance(candidate, dict)
-                        and isinstance(candidate.get("payloads"), list)
-                        and isinstance(candidate.get("meta"), dict)
-                        and isinstance(
-                            candidate["meta"].get("durationMs"),
-                            (int, float),
-                        )
-                    ):
+                    if _is_result_envelope(candidate):
                         result_envelope = candidate
                         logger.info(
                             "openclaw_cli: result envelope complete while pid=%s remains alive",
@@ -1037,9 +1022,9 @@ class OpenClawCliDeployer(BaseAgentDeployer):
         duration_s = time.monotonic() - t0
         exit_code = proc.returncode
         if result_envelope is None:
-            result_envelope = _parse_stderr_json(
-                _read_text_tolerant(stderr_log)
-            )
+            candidate = _parse_stderr_json(_read_text_tolerant(stderr_log))
+            if _is_result_envelope(candidate):
+                result_envelope = candidate
         envelope_error = _result_envelope_error(result_envelope)
         if envelope_error:
             status = "failed"
@@ -1158,8 +1143,11 @@ class OpenClawCliDeployer(BaseAgentDeployer):
         json_obj = _parse_stderr_json(text)
         if json_obj:
             meta = json_obj.get("meta", {})
+            if not isinstance(meta, dict):
+                return None
             agent_meta = meta.get("agentMeta", {})
-            return agent_meta.get("sessionId")
+            if isinstance(agent_meta, dict):
+                return agent_meta.get("sessionId")
         return None
 
     # =========================================================================
@@ -1503,6 +1491,15 @@ def _diagnose_failure(stderr_log: Path, exit_code: int | None) -> str:
             parts.append("stderr signals: " + " || ".join(signal[-5:]))
         parts.append(f"stderr tail: ...{text[-1200:]}")
     return " | ".join(parts)
+
+
+def _is_result_envelope(candidate: dict | None) -> bool:
+    return (
+        isinstance(candidate, dict)
+        and isinstance(candidate.get("payloads"), list)
+        and isinstance(candidate.get("meta"), dict)
+        and isinstance(candidate["meta"].get("durationMs"), (int, float))
+    )
 
 
 def _result_envelope_error(result_envelope: dict | None) -> str | None:

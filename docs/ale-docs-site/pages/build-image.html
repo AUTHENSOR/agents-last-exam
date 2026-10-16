@@ -291,6 +291,7 @@ gcloud compute images create ale-ubuntu22-custom \
       start copies the published images:
     </p>
     <pre><code>gcloud compute images create ale-ubuntu22-custom \
+  --project="&lt;destination-project&gt;" \
   --source-image=ale-ubuntu22-custom \
   --source-image-project="$GCP_PROJECT"</code></pre>
 

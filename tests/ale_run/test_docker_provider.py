@@ -1,3 +1,4 @@
+import asyncio
 import json
 from unittest.mock import AsyncMock
 
@@ -154,3 +155,39 @@ def test_loader_forwards_docker_image_revision():
     provider = docker.DockerProvider(environment.provider_specs["docker"].config)
 
     assert provider.config.image_revision == _REPO_DIGEST
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["port", "readiness", "limits", "credentials", "cancel"])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+async def test_acquire_cleans_up_after_post_create_failure(monkeypatch, stage, cleanup_fails):
+    failure = asyncio.CancelledError() if stage == "cancel" else RuntimeError(f"failed {stage}")
+    commands = AsyncMock(side_effect=[
+        (0, "container-id", ""),
+        RuntimeError("cleanup failed") if cleanup_fails else (0, "removed", ""),
+    ])
+    monkeypatch.setattr(docker, "_run_docker", commands)
+    monkeypatch.setattr(docker, "_get_image_provenance", AsyncMock(return_value={}))
+    port = AsyncMock(return_value=32809)
+    readiness = AsyncMock(return_value=True)
+    limits = AsyncMock(return_value={})
+    credentials = AsyncMock()
+    failing_call = {
+        "port": port, "readiness": readiness, "limits": limits,
+        "credentials": credentials, "cancel": readiness,
+    }[stage]
+    failing_call.side_effect = failure
+    monkeypatch.setattr(docker, "_get_host_port", port)
+    monkeypatch.setattr(docker, "_wait_cua_ready", readiness)
+    monkeypatch.setattr(docker, "_get_resource_limits", limits)
+    monkeypatch.setattr(docker.DockerProvider, "_inject_gcs_credentials", credentials)
+    provider = docker.DockerProvider({"gcs_sa_key": "/unused/key.json"})
+
+    with pytest.raises(type(failure)) as caught:
+        await provider.acquire(SandboxSpec(snapshot="cpu-free-ubuntu"))
+
+    assert caught.value is failure
+    arguments = commands.await_args_list[0].args
+    container_name = arguments[arguments.index("--name") + 1]
+    assert commands.await_args_list[-1].args == ("rm", "-f", container_name)
+    assert commands.await_count == 2

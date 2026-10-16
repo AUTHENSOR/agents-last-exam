@@ -1120,7 +1120,12 @@ class QemuProvider(Provider):
                     if expected_sha256 and _sha256_file(destination) == expected_sha256:
                         write_sidecar()
                         return destination
-                    if manifest is None and not sidecar.exists():
+                    if (
+                        manifest is None
+                        and not sidecar.exists()
+                        and _SHA256_RE.fullmatch(metadata.etag or "")
+                        and _sha256_file(destination) == metadata.etag
+                    ):
                         write_sidecar()
                         return destination
 

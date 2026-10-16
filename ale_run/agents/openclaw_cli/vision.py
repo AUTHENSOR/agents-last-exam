@@ -107,6 +107,7 @@ class VisionUsageProxy:
                     proxy._parsed.port or 443,
                     timeout=120,
                 )
+                headers_sent = False
                 try:
                     connection.request(
                         self.command,
@@ -115,7 +116,9 @@ class VisionUsageProxy:
                         headers=headers,
                     )
                     response = connection.getresponse()
-                    response_body = response.read()
+                    content_type = response.getheader("Content-Type", "")
+                    streaming = content_type.split(";", 1)[0].strip().lower() == "text/event-stream"
+                    response_body = b"" if streaming else response.read()
                     self.send_response(response.status, response.reason)
                     for name, value in response.getheaders():
                         lowered = name.lower()
@@ -124,11 +127,29 @@ class VisionUsageProxy:
                             and lowered != "content-encoding"
                         ):
                             self.send_header(name, value)
-                    self.send_header("Content-Length", str(len(response_body)))
+                    if streaming:
+                        self.send_header("Connection", "close")
+                        self.close_connection = True
+                    else:
+                        self.send_header("Content-Length", str(len(response_body)))
                     self.end_headers()
-                    self.wfile.write(response_body)
+                    headers_sent = True
+                    if streaming:
+                        chunks = []
+                        while chunk := response.read1(65536):
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+                            if proxy._usage_log is not None:
+                                chunks.append(chunk)
+                        response_body = b"".join(chunks)
+                    else:
+                        self.wfile.write(response_body)
                     proxy._record_usage(response_body)
                 except Exception as exc:
+                    if headers_sent:
+                        self.close_connection = True
+                        logger.warning("openclaw_cli: provider response interrupted: %s", exc)
+                        return
                     payload = json.dumps({
                         "error": {
                             "message": f"ALE vision proxy failed: {exc}",
@@ -185,32 +206,33 @@ def sanitize_openai_request_body(body: bytes) -> bytes:
     except (UnicodeDecodeError, json.JSONDecodeError):
         return body
 
-    def _sanitize(value: object) -> object:
-        if isinstance(value, list):
-            result = []
-            for item in value:
-                if (
-                    isinstance(item, dict)
-                    and item.get("type") in {"text", "input_text", "output_text"}
-                    and not str(item.get("text", "")).strip()
-                ):
-                    continue
-                result.append(_sanitize(item))
-            return result
-        if isinstance(value, dict):
-            result = {key: _sanitize(child) for key, child in value.items()}
-            if isinstance(value.get("content"), list) and not result["content"]:
-                role = value.get("role")
+    if not isinstance(payload, dict):
+        return body
+    for field in ("messages", "input"):
+        messages = payload.get(field)
+        if not isinstance(messages, list):
+            continue
+        for message in messages:
+            if not isinstance(message, dict) or not isinstance(message.get("content"), list):
+                continue
+            message["content"] = [
+                block for block in message["content"]
+                if not (
+                    isinstance(block, dict)
+                    and block.get("type") in {"text", "input_text", "output_text"}
+                    and not str(block.get("text", "")).strip()
+                )
+            ]
+            if not message["content"]:
+                role = message.get("role")
                 if role == "assistant":
-                    result["content"] = None
+                    message["content"] = None
                 elif role == "tool":
-                    result["content"] = "Tool completed."
+                    message["content"] = "Tool completed."
                 else:
-                    result["content"] = "Continue."
-            return result
-        return value
+                    message["content"] = "Continue."
 
-    return json.dumps(_sanitize(payload), separators=(",", ":")).encode()
+    return json.dumps(payload, separators=(",", ":")).encode()
 
 
 def _first_nonnegative_int(mapping: dict, *keys: str) -> int:

@@ -1,7 +1,7 @@
 # ale-ubuntu22-docker image build
 
 The container form of the `ale-ubuntu22` Linux sandbox. The **docker provider**
-runs the 102 tasks in `selected_tasks/docker_support.txt` on one host.
+runs the 78 tasks in `selected_tasks/docker_support.txt` on one host.
 The **data-less** v1.1 release is published at
 `agentslastexam/ale-ubuntu22-docker:v1.1`. Pair it with the pinned v1.1 archive,
 not an old `task-data` directory. Exact pins are in
@@ -235,10 +235,10 @@ bpmn ×2). In a container that's Docker-in-Docker: the nested daemon needs
 (`bake_nested_images.sh`) so a pulled image needs no per-start load.
 
 The supported local-container profile intentionally remains a simple rootless
-Docker path, so tasks that require Docker, Apptainer, or Singularity inside the
-sandbox are excluded from `docker_support.txt`. Run those tasks with the
-QEMU/KVM provider, where the nested runtime operates inside a complete Ubuntu
-guest.
+Docker path. Eight Linux tasks are excluded from `docker_support.txt`: four
+require nested Docker, one requires Apptainer/Singularity, and three require
+namespace or systemd/cgroup facilities. The [profile comments](../../../../configs/environments/docker.yaml)
+list all eight. Run them with the QEMU/KVM provider inside a complete Ubuntu guest.
 
 The DinD path remains available for custom development through
 `ALE_ENABLE_DIND=1`, `enable_dind: true`, and `privileged: true`. It is not part

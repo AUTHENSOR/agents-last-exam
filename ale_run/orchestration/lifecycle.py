@@ -100,10 +100,6 @@ def _append_prompt_suffix(
     task_meta["description"] = "\n\n".join([description.rstrip(), *suffixes])
 
 
-# Mount-fallback: how many provision attempts before we give up. Matches
-# simprun's single retry — the original env + one alternate profile.
-
-
 # ======================================================================
 # Public entry
 # ======================================================================

@@ -293,7 +293,6 @@ async def test_cancellation_kills_real_tool_process_tree(name, stem, tmp_path, m
     child_file = tmp_path / "child.pid"
     environment = {**os.environ, "AUDIT_CHILD_PID": str(child_file)}
     monkeypatch.setattr(deployer, "_build_env", lambda config: environment)
-    monkeypatch.setattr(module, "_POLL_INTERVAL_S", 0.01)
     monkeypatch.setattr(module, "_TERM_GRACE_S", 0.1)
     if name == "pi_cli":
         monkeypatch.setattr(deployer, "_build_argv", lambda *args: command)
@@ -410,6 +409,44 @@ async def test_pi_custom_model_preserves_input_capabilities(tmp_path, monkeypatc
     assert provider["models"][0]["input"] == modalities
     assert provider["apiKey"] == "${ALE_PI_API_KEY}"
     assert "audit-key" not in models_file.read_text()
+
+
+@pytest.mark.parametrize("version", ["0.1.0", None])
+@pytest.mark.parametrize("replaced", [False, True])
+async def test_pi_checks_cli_after_install(tmp_path, monkeypatch, version, replaced):
+    module, deployer = adapter("pi_cli", "PiCli", tmp_path, api_key="audit-key")
+    bootstrap = importlib.import_module("ale_run.agents._bootstrap")
+    monkeypatch.setattr(bootstrap, "ensure_node_npm", AsyncMock(return_value=("node", "npm")))
+    monkeypatch.setattr(bootstrap, "ensure_cua_mcp_server", AsyncMock())
+    monkeypatch.setattr(module, "ensure_cli_node", AsyncMock(return_value="node"))
+    refreshed_version = deployer.config.cli_version if replaced else version
+    probe = AsyncMock(side_effect=[version, refreshed_version])
+    monkeypatch.setattr(module, "_installed_version", probe)
+    monkeypatch.setattr(module, "shutil", SimpleNamespace(which=lambda name: "/mock/pi"))
+    command = AsyncMock(return_value=subprocess.CompletedProcess([], 0, "", ""))
+    monkeypatch.setattr(module, "run_command", command)
+    if replaced:
+        await deployer.install()
+        assert deployer._pi_path == "/mock/pi"
+    else:
+        with pytest.raises(RuntimeError, match="installed CLI does not match cli_version"):
+            await deployer.install()
+    assert probe.await_count == 2
+    assert any(
+        "install" in call.args[0] and "-g" in call.args[0] for call in command.await_args_list
+    )
+
+
+@pytest.mark.parametrize("failure", ["exit", "timeout"])
+async def test_pi_version_probe_failure_is_not_an_installed_version(monkeypatch, failure):
+    module = importlib.import_module("ale_run.agents.pi_cli.deployer")
+    command = AsyncMock(
+        return_value=subprocess.CompletedProcess([], 1, "0.85.1", "failed to load CLI")
+    )
+    if failure == "timeout":
+        command.side_effect = TimeoutError("CLI command timed out")
+    monkeypatch.setattr(module, "run_command", command)
+    assert await module._installed_version("/mock/pi") is None
 
 
 @pytest.fixture

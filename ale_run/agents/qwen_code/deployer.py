@@ -36,7 +36,6 @@ from .config import QwenCodeConfig
 
 logger = logging.getLogger(__name__)
 
-_POLL_INTERVAL_S = 5.0
 _TERM_GRACE_S = 3.0
 
 

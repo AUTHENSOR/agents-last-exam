@@ -12,8 +12,9 @@ A task asks for a logical snapshot (``cpu-free`` / ``gpu-free`` / ...);
 the provider resolves it via the yaml ``snapshots`` map to a GCE image +
 zone list, picks a machine (task-card ``vm.machineType`` override, else
 a default, with C→N2 fallback), and tries the zones in order on capacity
-errors. Boot disk size comes from the image's baked size; disk *type* is
-derived from the machine family (c4/m4/x4 → hyperdisk-balanced, else pd-ssd).
+errors. Boot disk size defaults to the image's baked size unless overridden;
+disk *type* is derived from the machine family (c4/m4/x4 → hyperdisk-balanced,
+else pd-ssd).
 """
 
 from __future__ import annotations
@@ -1020,19 +1021,30 @@ class GcloudProvider(Provider):
         _init_computer_skip_wait(session)
         script = r"""
 set -eu
-root="$(findmnt -n -o SOURCE /)"
+root="$(readlink -f "$(findmnt -n -o SOURCE /)")"
 parent="$(lsblk -no PKNAME "$root")"
-partition="$(lsblk -no PARTN "$root")"
+partition="$(cat "/sys/class/block/${root##*/}/partition")"
 test -n "$parent"
 test -n "$partition"
-sudo growpart "/dev/$parent" "$partition" || true
+growpart_status=0
+sudo growpart "/dev/$parent" "$partition" || growpart_status=$?
+if [ "$growpart_status" -gt 1 ]; then
+  exit "$growpart_status"
+fi
+disk_bytes="$(lsblk -bdno SIZE "/dev/$parent")"
+partition_bytes="$(lsblk -bdno SIZE "$root")"
+partition_start="$(cat "/sys/class/block/${root##*/}/start")"
+test "$disk_bytes" -gt 0
+if [ "$((partition_start * 512 + partition_bytes + 1024 * 1024))" -lt "$disk_bytes" ]; then
+  echo "root partition does not fill boot disk: $partition_bytes of $disk_bytes bytes" >&2
+  exit 1
+fi
 fstype="$(findmnt -n -o FSTYPE /)"
 case "$fstype" in
   ext2|ext3|ext4) sudo resize2fs "$root" ;;
   xfs) sudo xfs_growfs / ;;
   *) echo "unsupported root filesystem: $fstype" >&2; exit 1 ;;
 esac
-partition_bytes="$(lsblk -bno SIZE "$root")"
 filesystem_bytes="$(df -B1 --output=size / | tail -1 | tr -d ' ')"
 test "$filesystem_bytes" -ge "$((partition_bytes * 95 / 100))"
 df -h /

@@ -1043,7 +1043,7 @@ def build(args) -> None:
                         "all-layer/content audit",
                         "review added desktop packages",
                         "official provider GUI/tool/agent smokes",
-                        "all 99 task runs",
+                        "task runs from selected_tasks/docker_support.txt",
                     ],
                 },
             )

@@ -45,7 +45,7 @@ def fetch_fixture(tmp_path):
     )
     binary = tmp_path / "bin"
     binary.mkdir()
-    stub = binary / "huggingface-cli"
+    stub = binary / "hf"
     stub.write_text(
         f"#!{sys.executable}\n"
         "import argparse, json, os, pathlib, shutil, sys\n"
@@ -147,6 +147,19 @@ def test_pinned_default_extracts_native_links_and_modes(fetch_fixture):
     for name in ("TMPDIR", "TMP", "TEMP", "HF_HUB_CACHE", "HF_XET_CACHE"):
         assert Path(request["paths"][name]).is_relative_to(work)
     assert request["paths"]["HF_HOME"] == str(root / "existing-auth-home")
+
+
+def test_modern_cli_is_preferred_over_removed_legacy_shim(fetch_fixture):
+    root, _, _, _ = fetch_fixture
+    legacy = root / "bin/huggingface-cli"
+    legacy.write_text("#!/bin/sh\necho 'Use hf instead' >&2\nexit 1\n")
+    legacy.chmod(0o755)
+
+    result = run_fetch(fetch_fixture)
+
+    assert result.returncode == 0, result.stderr
+    assert len(calls(root)) == 1
+    assert (root / "task-data-v1.1" / TASK / "input/public.txt").is_file()
 
 
 @pytest.mark.parametrize("revision", ["main", "v1.1", "a" * 39, "g" * 40, "<COMMIT_SHA>"])

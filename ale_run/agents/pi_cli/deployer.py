@@ -37,7 +37,6 @@ from .config import PiCliConfig
 
 logger = logging.getLogger(__name__)
 
-_POLL_INTERVAL_S = 2.0
 _TERM_GRACE_S = 2.0
 _NPM_PACKAGE = "@earendil-works/pi-coding-agent"
 
@@ -92,6 +91,8 @@ class PiCliDeployer(BaseAgentDeployer):
             pi_path = shutil.which("pi")
             if not pi_path:
                 raise RuntimeError("PiCliDeployer: 'pi' still not found after install")
+            if await _installed_version(pi_path) != cfg.cli_version:
+                raise RuntimeError("pi_cli: installed CLI does not match cli_version")
         self._pi_path = pi_path
 
         wd = Path(self.executor.work_dir)
@@ -101,13 +102,6 @@ class PiCliDeployer(BaseAgentDeployer):
         home = self._home_dir
         pi_agent_dir = Path(home) / ".pi" / "agent"
         pi_agent_dir.mkdir(parents=True, exist_ok=True)
-
-        auth_file = pi_agent_dir / "auth.json"
-        if auth_file.exists():
-            try:
-                auth_file.unlink()
-            except OSError:
-                pass
 
         if cfg.provider == "custom":
             if not cfg.base_url:
@@ -134,13 +128,6 @@ class PiCliDeployer(BaseAgentDeployer):
                 },
             }
             write_private_json(pi_agent_dir / "models.json", models_json)
-        else:
-            models_json_file = pi_agent_dir / "models.json"
-            if models_json_file.exists():
-                try:
-                    models_json_file.unlink()
-                except OSError:
-                    pass
 
         from ale_run.agents._bootstrap import cua_bridge_env, ensure_cua_mcp_server
 
@@ -178,12 +165,6 @@ class PiCliDeployer(BaseAgentDeployer):
                 )
                 if install_proc.returncode != 0:
                     raise RuntimeError("pi_cli: required pi-mcp-adapter installation failed")
-        else:
-            if mcp_path.exists():
-                try:
-                    mcp_path.unlink()
-                except OSError:
-                    pass
 
     async def launch(self, prompt: str) -> AgentRunResult:
         cfg: PiCliConfig = self.config  # type: ignore[assignment]
@@ -590,6 +571,8 @@ async def _installed_version(pi_path: str) -> str | None:
             timeout=30,
         )
     except (subprocess.SubprocessError, OSError):
+        return None
+    if probe.returncode != 0:
         return None
     out = (probe.stdout or "") + (probe.stderr or "")
     for token in out.split():

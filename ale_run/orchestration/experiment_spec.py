@@ -33,7 +33,7 @@ class AgentSpec:
             Deployer class path (e.g. ``"my_pkg.MyDeployer"``).
         config: kwargs passed verbatim into the deployer's Config dataclass.
         executor: which substrate to run the deployer in: ``"sandbox"``
-            (in the cua-server VM), ``"local"`` (this Python process), or
+            (in the cua-server VM), ``"local"`` (supervised host worker), or
             ``"docker"`` (host docker container). Must be in
             ``DeployerCls.supported_executors`` or ``None`` (factory uses
             ``DeployerCls.default_executor``).

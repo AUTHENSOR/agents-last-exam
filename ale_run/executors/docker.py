@@ -9,8 +9,8 @@ Per-unit ``docker create --rm`` followed by ``docker start --attach``, with:
                                        import time (no copy needed)
 * ``--network host``                 — so the deployer can reach the
                                        sandbox VM's cua-server endpoint
-* ``--env-file <api_keys>``          — keeps api keys off the cmdline +
-                                       out of ``docker inspect``. Written
+* ``--env-file <api_keys>``          — keeps api keys off the cmdline, but
+                                       visible in ``docker inspect``. Written
                                        to a private tempdir OUTSIDE the
                                        bind mount so it never lands in the
                                        gathered host log dir; removed after
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_IMAGE_TAG = "ale/native-base:0.1.0"
 
 # How much wall-clock slack we give the container over the agent budget
-# (covers ``uv sync`` / dep install + container teardown).
+# (covers container transport and teardown; installation uses the agent budget).
 _DOCKER_SLACK_S = 180.0
 
 
@@ -164,7 +164,7 @@ class DockerExecutor(BaseExecutor):
             {**dict(self.env or {}), **config_secrets},
         )
 
-        # 2. Write env-file (keeps api keys off cmdline + docker inspect).
+        # 2. Write env-file (keeps api keys off cmdline, not docker inspect).
         #    Lives in a private tempdir OUTSIDE the bind-mounted work_dir so
         #    it is never part of the host log dir; removed after the run.
         env_lines = []

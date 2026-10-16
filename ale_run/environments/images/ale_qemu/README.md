@@ -81,7 +81,7 @@ snapshots:
 ```
 
 Retain the immutable `image_revision` from `configs/environments/qemu.yaml` in
-both snapshot blocks. Use `selected_tasks/cpu.txt` for the 146 CPU tasks. See
+both snapshot blocks. Use `selected_tasks/cpu.txt` for the 119 CPU tasks. See
 [the release guide](../../../../docs/releases/v1.1.md) for checksums, image pins,
 and the log upgrade command. `run.json` records provider image provenance in
 `environment.image_revision`.

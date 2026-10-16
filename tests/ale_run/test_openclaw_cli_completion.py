@@ -6,6 +6,8 @@ import json
 from http.client import HTTPConnection
 from types import SimpleNamespace
 
+import pytest
+
 from ale_run.agents.openclaw_cli import OpenClawCliConfig, OpenClawCliDeployer
 from ale_run.agents.openclaw_cli import deployer as deployer_module
 from ale_run.agents.openclaw_cli import vision as vision_module
@@ -23,6 +25,34 @@ class _LingeringOpenClawProcess:
 
     def poll(self) -> None:
         return None
+
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    [
+        {"error": "provider rejected request"},
+        {"payloads": [], "meta": None},
+        {"payloads": [], "meta": {"durationMs": "1234"}},
+    ],
+)
+def test_failed_exit_with_json_diagnostic_is_not_a_completed_run(tmp_path, monkeypatch, diagnostic):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config = OpenClawCliConfig()
+    executor = SimpleNamespace(config=config, work_dir=str(tmp_path), env={})
+    deployer = OpenClawCliDeployer(executor)
+    monkeypatch.setattr(deployer, "_complete_workspace_bootstrap", lambda: None)
+    monkeypatch.setattr(deployer, "_launch_prefix", lambda: ["openclaw"])
+    monkeypatch.setattr(deployer, "_build_env", lambda *_: {})
+
+    def fake_popen(*args, stderr, **kwargs):
+        stderr.write(json.dumps(diagnostic).encode())
+        return SimpleNamespace(pid=4242, returncode=1, poll=lambda: 1)
+
+    monkeypatch.setattr(deployer_module.subprocess, "Popen", fake_popen)
+    result = asyncio.run(deployer.launch("finish the task"))
+    assert result.status == "failed"
+    assert result.exit_code == 1
+    assert "rc=1" in result.error
 
 
 def test_launch_finishes_when_result_envelope_is_complete(
@@ -479,6 +509,9 @@ def test_vision_usage_proxy_forwards_response_and_records_usage(
 
         def getheaders(self) -> list[tuple[str, str]]:
             return [("Content-Type", "application/json")]
+
+        def getheader(self, name, default=None):
+            return dict(self.getheaders()).get(name, default)
 
     class FakeHttpsConnection:
         def __init__(self, host, port, timeout) -> None:

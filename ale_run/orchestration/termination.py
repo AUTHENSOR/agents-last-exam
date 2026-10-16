@@ -77,9 +77,9 @@ def classify_error(exc: BaseException) -> str | None:
 
 
 def redact_config(cfg: dict[str, Any]) -> dict[str, Any]:
-    def redact(value: Any, key: str | None = None) -> Any:
+    def redact(value: Any, key: Any = None) -> Any:
         if (
-            key is not None
+            isinstance(key, str)
             and (key.lower() == "api_key" or key.lower().endswith("_api_key"))
             and isinstance(value, str)
             and value

@@ -42,7 +42,6 @@ from .config import ZCodeConfig
 
 logger = logging.getLogger(__name__)
 
-_POLL_INTERVAL_S = 5.0
 _TERM_GRACE_S = 3.0
 
 _REPO_URL = "https://github.com/zai-org/ZCode.git"
@@ -137,8 +136,6 @@ class ZCodeDeployer(BaseAgentDeployer):
             build_s,
         )
 
-        # Provider config: two JSON files, env-var-addressed (see module
-        # docstring). Written under a stable per-run dir.
         wd = Path(self.executor.work_dir)
         wd.mkdir(parents=True, exist_ok=True)
         cfg_dir = Path(tempfile.mkdtemp(prefix=".ale-zcode-", dir=wd.parent))
@@ -395,7 +392,7 @@ class ZCodeDeployer(BaseAgentDeployer):
 
     @staticmethod
     def _build_personal_config(cfg: ZCodeConfig) -> dict:
-        """One custom provider -- see module docstring for schema source."""
+        """Register a custom provider and its default model selection."""
         return {
             "schemaVersion": 1,
             "config": {
