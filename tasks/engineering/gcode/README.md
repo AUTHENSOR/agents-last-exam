@@ -128,7 +128,7 @@ starts a bounded native worker. It exports saved FreeCAD operations, interprets
 their NC instructions, checks all physical motions, cuts the original stock, and
 then applies the existing region-aware geometry scorer. The stock and safety
 receipts must describe identical motions. Submitted stock files are ignored.
-Native safety has a 3000-second budget within the existing 3600-second preview
+Native safety has a 5400-second budget within the existing 6300-second preview
 limit; stock simulation retains its 300-second limit. The overall evaluator
 still allows 6900 seconds, including geometry scoring.
 

@@ -71,7 +71,7 @@ class GCodeTaskConfig(LinuxTaskConfig):
                 "ALE_CAM_RUNTIME_CONFIG", "/opt/ale-cam/runtime.json"
             ),
             "release_status": (
-                "native_entrypoint_passed_awaiting_agent_review"
+                "native_controls_and_agent_review_passed"
                 if self.VARIANT_NAME == "125162_319"
                 else "awaiting_variant_data_validation"
             ),
