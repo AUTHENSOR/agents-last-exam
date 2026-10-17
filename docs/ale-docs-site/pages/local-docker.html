@@ -54,7 +54,14 @@
     </ul>
     <pre><code>docker info
 df -h .
-uv sync --all-packages</code></pre>
+bash env/install_host_deps.sh
+uv sync --all-packages --locked
+bash env/verify_host_env.sh</code></pre>
+    <p>
+      Complete the <a href="/pages/providers.html">host evaluation setup</a>
+      even when task applications are already installed in the container image.
+      The host installer supports Ubuntu 22.04/24.04/26.04 and Debian 12/13.
+    </p>
 
     <h2>Fetch task data once</h2>
     <p>

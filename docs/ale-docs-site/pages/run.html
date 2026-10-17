@@ -27,6 +27,14 @@
     </p>
 
     <h2>Launch and filter</h2>
+    <p>
+      A real run first checks host evaluator package versions, imports, native
+      tools, and selected task entry points, then probes any required Judge
+      interfaces. Failures abort before sandbox creation. Use
+      <code>bash env/verify_host_env.sh</code> to check all 122 active task entry
+      points after <a href="/pages/providers.html">installing ALE</a>.
+      A dry run does not perform these checks.
+    </p>
     <pre><code>uv run python -m ale_run run my_experiment.yaml
 
 # Run only selected entries from the matrix:

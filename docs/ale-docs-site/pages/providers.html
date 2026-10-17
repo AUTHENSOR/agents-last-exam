@@ -21,7 +21,17 @@
     <h2>Install ALE</h2>
     <pre><code>git clone git@github.com:rdi-berkeley/agents-last-exam.git
 cd agents-last-exam
-uv sync --all-packages</code></pre>
+bash env/install_host_deps.sh
+uv sync --all-packages --locked
+bash env/verify_host_env.sh</code></pre>
+    <p>
+      Host setup supports Ubuntu 22.04/24.04/26.04 and Debian 12/13. The checked-in
+      <code>uv.lock</code> pins Python dependencies. Verification checks native
+      tools, deferred evaluator imports, and all 122 active task entry points
+      without starting sandboxes or calling judges. Provider tools and guest
+      applications are configured separately. See
+      <a href="https://github.com/rdi-berkeley/agents-last-exam/blob/main/env/README.md#host-evaluation-environment">host setup and validation scope</a>.
+    </p>
     <p>
       Use the frozen v1.1 task source with the matching image and data pins in
       the <a href="/pages/configure.html#v1-1">release configuration</a>.

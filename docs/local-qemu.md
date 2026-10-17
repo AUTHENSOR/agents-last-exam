@@ -19,6 +19,7 @@ normal cleanup.
 
 ## Host requirements
 
+- Complete the [host evaluation setup](../env/README.md#host-evaluation-environment)
 - Linux with hardware virtualization or nested virtualization enabled
 - Docker daemon available to the current user
 - `/dev/kvm` present and passable through the Docker daemon
@@ -26,6 +27,18 @@ normal cleanup.
 - Sufficient disk for the cached base images
 - `huggingface-hub` for `hf://` disks, installed with the project dependencies
 - `gcloud` or `gsutil` when `qemu.disk_source` is a `gs://` URI
+
+From the repository root, install and check the host evaluator before downloading
+VM images. These dependencies run outside the guest, including for Windows tasks:
+
+```bash
+bash env/install_host_deps.sh
+uv sync --all-packages --locked
+bash env/verify_host_env.sh
+```
+
+The installer supports Ubuntu 22.04/24.04/26.04 and Debian 12/13. Docker, KVM,
+cloud authentication, and guest applications remain provider prerequisites.
 
 The published base images are:
 

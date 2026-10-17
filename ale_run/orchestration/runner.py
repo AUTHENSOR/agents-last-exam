@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
-from .factory import EnvironmentRouter
 from .experiment_spec import ExperimentSpec, RunUnit, UnitResult
+from .factory import EnvironmentRouter
 from .judge_preflight import check_judges
 
 logger = logging.getLogger(__name__)
@@ -76,6 +76,7 @@ class Runner:
         Only the final result for each unit is returned; every attempt retains
         its own run directory on disk.
         """
+        from .host_preflight import check_host_dependencies
         from .lifecycle import install_signal_handlers, run_one_unit
 
         if max_attempts < 1:
@@ -87,6 +88,7 @@ class Runner:
             logger.warning("Runner.run: no units to execute")
             return []
 
+        await asyncio.to_thread(check_host_dependencies, (unit.task_path for unit in unit_list))
         await check_judges(unit_list)
 
         self._output_root.mkdir(parents=True, exist_ok=True)

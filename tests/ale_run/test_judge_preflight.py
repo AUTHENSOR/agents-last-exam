@@ -79,6 +79,7 @@ async def test_failed_probe_prevents_entire_batch_from_starting(monkeypatch, tmp
     monkeypatch.setattr(evaluation, "llm_multimodal_json", probe)
     launch = AsyncMock()
     monkeypatch.setattr("ale_run.orchestration.lifecycle.run_one_unit", launch)
+    monkeypatch.setattr("ale_run.orchestration.host_preflight.check_host_dependencies", lambda _: None)
     spec = ExperimentSpec(
         name="preflight-test", output=OutputSpec(root=str(tmp_path)),
         environment=EnvironmentSpec(), agents=[], tasks=[],

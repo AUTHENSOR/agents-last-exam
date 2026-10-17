@@ -1,4 +1,3 @@
-import asyncio
 import json
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -70,6 +69,7 @@ def episode(tmp_path, monkeypatch):
     monkeypatch.setattr(lifecycle, "stage_reference", AsyncMock())
     monkeypatch.setattr(lifecycle, "install_signal_handlers", Mock())
     monkeypatch.setattr("ale_run.orchestration.runner.check_judges", AsyncMock())
+    monkeypatch.setattr("ale_run.orchestration.host_preflight.check_host_dependencies", Mock())
     runner = Runner(ExperimentSpec(
         name="judge-failure-test",
         output=OutputSpec(root=str(tmp_path)),
@@ -162,7 +162,7 @@ async def test_valid_scored_agent_timeout_remains_timeout_without_retry(episode,
 @pytest.mark.parametrize("agent_status", ["completed", "timeout"])
 async def test_evaluator_timeout_semantics_are_unchanged(episode, agent_status):
     episode.executor.run_deployer.return_value = AgentRunResult(status=agent_status)
-    episode.driver.evaluate.side_effect = asyncio.TimeoutError()
+    episode.driver.evaluate.side_effect = TimeoutError()
 
     result = (await episode.runner.run([episode.unit], max_attempts=2))[0]
 

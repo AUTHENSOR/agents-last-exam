@@ -68,10 +68,18 @@ lists all 30 retirements. To preserve the original requirements, use the
 ```bash
 git clone git@github.com:rdi-berkeley/agents-last-exam.git
 cd agents-last-exam
-uv sync --all-packages
+bash env/install_host_deps.sh
+uv sync --all-packages --locked
+bash env/verify_host_env.sh
 cp -n secret/.env.example secret/.env
 cp example_exp.yaml my_experiment.yaml
 ```
+
+The host installer supports Ubuntu 22.04/24.04/26.04 and Debian 12/13.
+The verifier checks all 122 active task entry points, evaluator imports,
+Python versions against the checked-in `uv.lock`, and native tools including
+FFmpeg/ffprobe. See [host setup](env/README.md#host-evaluation-environment) for
+requirements and validation scope. Install provider tools separately.
 
 Choose where ALE should create or attach each task sandbox:
 

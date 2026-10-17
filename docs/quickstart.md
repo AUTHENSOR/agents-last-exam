@@ -18,8 +18,17 @@ Install the
 gcloud auth login
 git clone git@github.com:rdi-berkeley/agents-last-exam.git
 cd agents-last-exam
-uv sync --all-packages
+bash env/install_host_deps.sh
+uv sync --all-packages --locked
+bash env/verify_host_env.sh
 ```
+
+The host installer supports Ubuntu 22.04/24.04/26.04 and Debian 12/13; see
+[host evaluation dependencies](../env/README.md#host-evaluation-environment).
+The checked-in `uv.lock` pins Python dependencies. Verification checks native
+tools, deferred evaluator imports, and all 122 active task entry points without
+starting VMs or contacting judges. The runner repeats host checks before its
+Judge preflight; `--dry-run` remains a configuration-only preview.
 
 The host's `gcloud` login creates and deletes VMs. A separate service-account
 key is injected into each sandbox for Cloud Storage.

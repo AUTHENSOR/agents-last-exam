@@ -27,6 +27,14 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "ruff>=0.5",
+    # Exercise guest-side scoring helpers in local regression tests.
+    "astropy>=6.0",
+    "librosa>=0.11",
+    "pydicom>=3.0",
+    "python-fcl>=0.7",
+    "shapely>=2.1",
+    "soundfile>=0.13",
+    "trimesh>=4.0",
 ]
 
 [tool.uv.workspace]

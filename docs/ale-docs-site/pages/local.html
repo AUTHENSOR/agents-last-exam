@@ -51,6 +51,15 @@
     </p>
 
     <h2>Host requirements</h2>
+    <p>Install and verify the host evaluation environment from the repository root:</p>
+    <pre><code>bash env/install_host_deps.sh
+uv sync --all-packages --locked
+bash env/verify_host_env.sh</code></pre>
+    <p>
+      These dependencies run outside the guest, including for Windows tasks.
+      See <a href="/pages/providers.html">host setup</a> for supported distributions
+      and validation scope. Docker and KVM must also be available:
+    </p>
     <ul>
       <li>A Linux host.</li>
       <li>Docker available to the current user.</li>
