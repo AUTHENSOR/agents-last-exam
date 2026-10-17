@@ -43,6 +43,13 @@ from Daytona. The provider records image and allocated-resource provenance,
 but using the same image does not establish VM equivalence: validate task
 inputs, GUI behavior, evaluator results and agent scores separately.
 
-Daytona also has Linux VM and Windows sandbox classes. The image requirements,
-regional availability and quotas for those classes differ from Docker
-sandboxes. This provider does not import or run existing ALE VM disk images.
+Daytona also has Linux VM and Windows sandbox classes. A Linux VM sandbox with
+`kvm: true` exposes `/dev/kvm` and could in principle run QEMU with an ALE VM
+disk inside it, including a Windows guest. This requires the organization's
+`sandbox_kvm` feature and a Linux VM snapshot, plus adequate CPU, memory and disk.
+See [Daytona's nested virtualization documentation](https://www.daytona.io/docs/en/sandboxes/#nested-virtualization)
+and [CLI options](https://www.daytona.io/docs/en/tools/cli/).
+The tested organization rejected `daytona-vm-small` with `kvm: true` because
+KVM sandboxes are not enabled, so guest boot and performance remain untested.
+The current provider supports Docker sandboxes only; it does not yet orchestrate
+nested QEMU, transfer VM images or validate Windows/Linux guest workflows.
