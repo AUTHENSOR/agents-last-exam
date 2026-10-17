@@ -106,7 +106,8 @@ def test_resume_requires_matching_folder_revision(
     task = {}
     if revision_kind != "missing":
         task["revision"] = task_revision(task_folder) if revision_kind == "current" else "old"
-    (run_dir / "run.json").write_text(json.dumps({"status": status, "task": task}))
+    (run_dir / "run.json").write_text(json.dumps({"status": status, "task": task, "score": 0.0}))
+    (run_dir / "eval_result.json").write_text(json.dumps({"eval_status": "success", "score": 0.0}))
     assert cli._unit_already_done(unit, tmp_path / "logs") is should_skip
     (task_folder / "scripts" / "score.py").write_text("score = 0\n")
     assert not cli._unit_already_done(unit, tmp_path / "logs")
@@ -133,8 +134,9 @@ def test_resume_hashes_once_per_task_per_scan(task_folder, tmp_path, monkeypatch
         run_dir = tmp_path / "logs" / "dummy" / "test" / "demo__example" / f"v{unit.variant_index}" / "run"
         run_dir.mkdir(parents=True)
         (run_dir / "run.json").write_text(json.dumps({
-            "status": "completed", "task": {"revision": revision},
+            "status": "completed", "task": {"revision": revision}, "score": 1.0,
         }))
+        (run_dir / "eval_result.json").write_text(json.dumps({"eval_status": "success", "score": 1.0}))
     calls = []
 
     def counted_hash(directory):

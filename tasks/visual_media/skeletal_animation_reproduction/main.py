@@ -17,7 +17,6 @@ import cua_bench as cb
 
 from tasks.common_config import GeneralTaskConfig
 from tasks.common_setup import BaseTaskSetup
-from tasks.utils.evaluation import judge_config
 from tasks.visual_media.skeletal_animation_reproduction._shared_eval import (
     compute_final_score,
     compute_local_metrics,
@@ -662,26 +661,12 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
             pose_state_rows=pose_state_rows,
         )
 
-        vlm_score = float(
-            (
-                float(hard_metrics["video_match_score"])
-                + float(hard_metrics["replay_consistency_score"])
-                + float(hard_metrics["minimal_skeleton_score"])
-            )
-            / 3.0
+        vlm_score = run_local_soft_eval(
+            reference_sheet=bundle["reference_sheet"],
+            preview_sheet=bundle["preview_sheet"],
+            replay_sheet=bundle["replay_sheet"],
+            pose_state_sheet=bundle["pose_state_sheet"],
         )
-        if judge_config()["api_key"]:
-            try:
-                vlm_score = run_local_soft_eval(
-                    reference_sheet=bundle["reference_sheet"],
-                    preview_sheet=bundle["preview_sheet"],
-                    replay_sheet=bundle["replay_sheet"],
-                    pose_state_sheet=bundle["pose_state_sheet"],
-                )
-            except Exception:
-                logger.warning(
-                    "Local VLM judge failed; falling back to machine-score mean", exc_info=True
-                )
 
         final_score = compute_final_score(
             validity_gate=bool(hard_metrics["validity_gate_passed"]),

@@ -721,7 +721,9 @@ def _parse_binary_answer(value: Any) -> float:
     if isinstance(value, bool):
         return 1.0 if value else 0.0
     if isinstance(value, (int, float)):
-        return 1.0 if float(value) > 0 else 0.0
+        if value not in (0, 1):
+            raise ValueError(f"Judge returned a non-binary checklist answer: {value!r}")
+        return float(value)
     text = str(value or "").strip().upper()
     if text in {"YES", "Y", "TRUE", "1", "PASS"}:
         return 1.0
@@ -884,7 +886,11 @@ def llm_multimodal_binary_questions_sync(
             temperature=temperature,
             api_key=api_key,
         )
-        parsed = _normalize_binary_response(raw_response) or "NO"
+        parsed = _normalize_binary_response(raw_response)
+        if parsed is None:
+            raise JudgeInfrastructureError(
+                f"Judge returned a non-binary response for question {index}: {raw_response[:200]!r}"
+            )
         score = 1.0 if parsed == "YES" else 0.0
         raw_responses.append(raw_response)
         results.append(
@@ -1118,7 +1124,7 @@ class EvaluationContext:
     def log_evaluation(
         self,
         identifier: str,
-        score: float,
+        score: float | None,
         vlm_response: Optional[str] = None,
         prompt: Optional[str] = None,
         model: Optional[str] = None,
@@ -1147,7 +1153,7 @@ class EvaluationContext:
             **extra_fields,
         }
         # Remove None values for cleaner output
-        eval_entry = {k: v for k, v in eval_entry.items() if v is not None}
+        eval_entry = {k: v for k, v in eval_entry.items() if v is not None or k == "score"}
 
         self.evaluation_details["evaluations"].append(eval_entry)
         self._num_evaluated += 1
@@ -1159,7 +1165,7 @@ class EvaluationContext:
         if error:
             logger.error(f"Identifier '{identifier}' error: {error}")
 
-    def log_error(self, identifier: str, error: Union[str, Exception], score: float = 0.0) -> None:
+    def log_error(self, identifier: str, error: Union[str, Exception], score: float | None = None) -> None:
         """Log an evaluation error."""
         error_msg = str(error)
         self.log_evaluation(identifier=identifier, score=score, error=error_msg)

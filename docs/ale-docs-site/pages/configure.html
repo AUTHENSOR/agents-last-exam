@@ -167,7 +167,7 @@ cleanup_mode: delete</code></pre>
         <tr><td><code>output.root</code></td><td>The host directory for run records. This is separate from the environment's task-output destination.</td></tr>
         <tr><td><code>concurrency</code></td><td>Maximum run units active at once.</td></tr>
         <tr><td><code>wall_time_s</code></td><td>Optional experiment-wide agent time limit. When omitted, each task card supplies its own timeout.</td></tr>
-        <tr><td><code>auto_resume</code></td><td>Defaults to <code>true</code>. Skips completed/timeout units only with a matching task-folder hash; missing or changed hashes rerun. Retries newly failed units.</td></tr>
+        <tr><td><code>auto_resume</code></td><td>Defaults to <code>true</code>. Skips completed/timeout units only with a matching task-folder hash and a successful, error-free evaluation whose numeric score matches the run record. Missing or changed hashes and unscored evaluations rerun. Retries newly failed units.</td></tr>
         <tr><td><code>max_attempts</code></td><td>Total attempts per failed unit in one invocation when auto-resume is enabled. Accepts 1 through 3 and defaults to 3.</td></tr>
         <tr><td><code>cleanup_mode</code></td><td><code>delete</code>, <code>stop</code>, or <code>keep</code> for provider-managed sandboxes.</td></tr>
         <tr><td><code>prompt_suffix</code></td><td>Optional text appended to every task instruction and recorded in the trajectory.</td></tr>
@@ -286,8 +286,10 @@ GCP_SA_KEY=secret/gcp_key.json</code></pre>
       Before provisioning sandboxes, batches containing shared LLM-judge tasks
       probe the configured judge with text and, when required, an image. A failed
       probe aborts the batch; fix the judge configuration and rerun the command.
-      <code>--dry-run</code> makes no judge requests. A later judge outage is an
-      evaluation failure requiring retry, not a valid score.
+      <code>--dry-run</code> makes no judge requests. A later judge outage or
+      malformed scoring reply produces an evaluation error with
+      <code>score: null</code>, never zero or a substitute score. Odoo uses
+      database checks and does not require a Judge API.
     </p>
 
     <h2>Configure task data and output</h2>

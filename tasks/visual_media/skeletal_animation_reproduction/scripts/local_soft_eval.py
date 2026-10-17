@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tasks.utils.evaluation import judge_config, llm_vision_binary_questions_sync, resolve_llm_judge_model
+from tasks.utils.evaluation import llm_vision_binary_questions_sync, resolve_llm_judge_model
 
 
 def run_local_soft_eval(
@@ -13,9 +13,6 @@ def run_local_soft_eval(
     replay_sheet: Path,
     pose_state_sheet: Path,
 ) -> float:
-    if not judge_config()["api_key"]:
-        return 0.0
-
     prompt_context = (
         "You are an expert animation and rigging judge. "
         "This is a body-motion reproduction task. "
@@ -47,4 +44,4 @@ def run_local_soft_eval(
     )
     report_path = reference_sheet.parent / "soft_eval_report.json"
     report_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return max(0.0, min(1.0, float(data.get("final_score", 0.0))))
+    return float(data["final_score"])

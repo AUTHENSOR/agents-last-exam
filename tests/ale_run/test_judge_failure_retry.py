@@ -169,3 +169,39 @@ async def test_evaluator_timeout_semantics_are_unchanged(episode, agent_status):
     assert result.status == "timeout"
     assert result.eval_status == "timeout"
     assert episode.executor.run_deployer.await_count == 1
+    assert result.score is None
+    assert not cli._unit_already_done(episode.unit, episode.runner.output_root)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("eval_status", "failed"),
+        ("error", "Judge HTTP 401"),
+        ("score", None),
+        ("score", True),
+        ("score", 0.5),
+    ],
+)
+async def test_resume_requires_consistent_successful_evaluation(episode, field, value):
+    episode.executor.run_deployer.return_value = AgentRunResult(status="completed")
+    episode.driver.evaluate.return_value = {"score": 1.0}
+    result = (await episode.runner.run([episode.unit]))[0]
+    assert cli._unit_already_done(episode.unit, episode.runner.output_root)
+    path = result.run_dir / "eval_result.json"
+    evaluation = json.loads(path.read_text())
+    evaluation[field] = value
+    path.write_text(json.dumps(evaluation))
+    assert not cli._unit_already_done(episode.unit, episode.runner.output_root)
+
+
+@pytest.mark.parametrize("score", [None, True, float("nan"), float("inf"), -0.1, 1.1])
+async def test_resume_rejects_invalid_record_score(episode, score):
+    episode.executor.run_deployer.return_value = AgentRunResult(status="completed")
+    episode.driver.evaluate.return_value = {"score": 1.0}
+    result = (await episode.runner.run([episode.unit]))[0]
+    path = result.run_dir / "run.json"
+    record = json.loads(path.read_text())
+    record["score"] = score
+    path.write_text(json.dumps(record))
+    assert not cli._unit_already_done(episode.unit, episode.runner.output_root)

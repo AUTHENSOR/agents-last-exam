@@ -64,7 +64,9 @@ max_attempts: 3</code></pre>
       Auto-resume is enabled by default. It scans prior <code>run.json</code>
       files under the same experiment name and output root, skips units with
       status <code>completed</code> or <code>timeout</code> only when
-      <code>task.revision</code> matches the current task-folder SHA256. Missing
+      <code>task.revision</code> matches the current task-folder SHA256 and
+      <code>eval_result.json</code> confirms a successful, error-free evaluation
+      with the same numeric score. Unscored evaluation timeouts are not complete. Missing
       or mismatched hashes rerun. The hash is recorded before setup and covers
       file names, contents, executable bits, and link targets, ignoring runtime
       caches.

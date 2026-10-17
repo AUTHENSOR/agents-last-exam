@@ -166,8 +166,9 @@ video judges retain their Gemini configuration. The hello-world task needs no ju
 Before starting sandboxes, a batch containing shared LLM-judge tasks checks the
 configured judge with a text request and, when needed, an image request. A failed
 check aborts the batch. Fix the judge configuration and rerun the same command.
-`--dry-run` does not contact the judge. A later judge outage is an evaluation
-failure requiring retry, not a valid score.
+`--dry-run` does not contact the judge. A later judge outage or malformed scoring
+reply produces an evaluation error with `score: null`, never zero or a substitute
+score. Odoo uses database checks and does not require a Judge API.
 
 ## 8. Validate and run the demo
 
@@ -206,7 +207,9 @@ cleanup_mode: keep
 Choose concurrency according to project quota, GPU availability, LLM rate
 limits, and budget, including retained sandboxes. Auto-resume skips prior
 `completed` and `timeout` units only when `run.json`'s `task.revision` matches
-the current task-folder SHA256. Missing or changed hashes rerun; see the
+the current task-folder SHA256 and `eval_result.json` confirms a successful,
+error-free evaluation with the same numeric score. Unscored evaluation timeouts
+are not complete. Missing or changed hashes rerun; see the
 [v1 log upgrade helper](releases/v1.1.md#upgrade-existing-logs) for legacy logs.
 Failed units retry up to `max_attempts`. Use `--disable-resume` to run every
 selected unit once without retries.

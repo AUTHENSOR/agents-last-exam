@@ -21,7 +21,6 @@ def test_selected_task_requirements_are_deduplicated():
 
 
 @pytest.mark.parametrize("task", [
-    "business_finance/odoo",
     "business_finance/saas_onepager_brand_refresh_instance_1",
     "engineering/2d_drawings_to_3d_building_model",
     "engineering/2d_drawings_to_3d_bridge_model",
