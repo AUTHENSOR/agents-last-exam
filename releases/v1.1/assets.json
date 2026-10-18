@@ -45,6 +45,10 @@
     "selected_tasks/tool_smoke_both.txt": {
       "count": 2,
       "sha256": "abf070c223349717f3d441b9edc597c0515f32ace7a03c49e0de82dd5ef3b949"
+    },
+    "selected_tasks/v1.1_modified.txt": {
+      "count": 57,
+      "sha256": "ffd7432ea2c7c45900d15f1e88638956c02f665650c232152106d75b77f9c9da"
     }
   },
   "huggingface": {

@@ -4,17 +4,16 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import errno
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import stat
-import subprocess
 import sys
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -79,8 +78,6 @@ def load_manifest(path: Path) -> dict:
     manifest, _ = read_json(path)
     if manifest.get("schema_version") != 1 or manifest.get("release") != "v1.1":
         raise UnsafeLogs("Unsupported upgrade manifest")
-    if not re.fullmatch(r"[0-9a-f]{40}", str(manifest.get("baseline_commit", ""))):
-        raise UnsafeLogs("Missing manifest baseline commit")
     tasks = manifest.get("tasks")
     if not isinstance(tasks, dict) or not tasks:
         raise UnsafeLogs("Missing manifest task map")
@@ -197,56 +194,11 @@ def read_completed(
     return metadata, raw
 
 
-def additional_changes(repository: Path, commit: str, manifest: dict) -> set[str]:
-    try:
-        baseline = subprocess.check_output(
-            ["git", "rev-parse", "--verify", "--end-of-options", f"{commit}^{{commit}}"],
-            cwd=repository,
-            text=True,
-            stderr=subprocess.PIPE,
-        ).strip()
-        changed = (
-            subprocess.check_output(
-                [
-                    "git",
-                    "diff",
-                    "--name-only",
-                    "--no-renames",
-                    "-z",
-                    baseline,
-                    manifest["release_commit"],
-                    "--",
-                    "tasks",
-                ],
-                cwd=repository,
-                stderr=subprocess.PIPE,
-            )
-            .decode()
-            .split("\0")
-        )
-    except (OSError, subprocess.CalledProcessError) as error:
-        raise UnsafeLogs(f"Cannot compare --from-commit {commit!r}: {error}") from error
-    tasks = manifest["tasks"]
-    extra = set()
-    for filename in filter(None, changed):
-        parts = filename.split("/")
-        task_id = "/".join(parts[1:3])
-        if task_id in tasks:
-            extra.add(task_id)
-        elif "_shared" in parts or filename in {
-            "tasks/utils/evaluation.py",
-            "tasks/linux_runtime.py",
-        }:
-            extra.update(tasks)
-    return extra
-
-
 def build_plan(
     root: Path,
     *,
     repository: Path = ROOT,
     manifest_path: Path = MANIFEST,
-    from_commit: str | None = None,
 ) -> list[Operation]:
     from ale_run.tasks.revision import task_revision
 
@@ -254,7 +206,6 @@ def build_plan(
     if not root.is_dir():
         raise UnsafeLogs(f"Not a log directory: {root}")
     manifest = load_manifest(manifest_path)
-    extra = additional_changes(repository, from_commit, manifest) if from_commit else set()
     revisions = {}
     operations = []
     task_directories = discover_tasks(root, manifest["tasks"])
@@ -264,6 +215,8 @@ def build_plan(
             source = checked_path(repository / "tasks" / task_id)
             revisions[task_id] = task_revision(source) if source.is_dir() else None
         current = revisions.get(task_id)
+        if entry["action"] != "retire" and current != entry["revision"]:
+            raise UnsafeLogs(f"Task source differs from the v1.1 manifest: {task_id}")
         for variant_directory in sorted(task_directory.iterdir()):
             match = VARIANT.fullmatch(variant_directory.name)
             if not match:
@@ -279,26 +232,16 @@ def build_plan(
                     directory,
                     task_id,
                     int(match[1]),
-                    allow_corrupt=entry["action"] in {"rerun", "retire"} or task_id in extra,
+                    allow_corrupt=entry["action"] in {"rerun", "retire"},
                 )
                 task = metadata.get("task")
                 previous = task.get("revision") if isinstance(task, dict) else None
                 action, reason, updated = "clear", entry["action"], None
-                if entry["action"] != "retire":
-                    if current != entry["revision"]:
-                        reason = "task source differs from clean release (or is missing)"
-                    elif (
-                        task_id in extra
-                        and isinstance(task, dict)
-                        and task.get("revision_migration")
-                    ):
-                        reason = "changed since --from-commit; prior revision was a v1 stamp"
-                    elif previous == current:
-                        action, reason = "retain", "already has the clean release revision"
-                    elif previous is not None:
-                        reason = "recorded revision differs from release"
-                    elif entry["action"] == "retain" and task_id not in extra:
-                        action, reason = "retain", "unchanged in release map"
+                if entry["action"] == "retain":
+                    action, reason = "retain", "unchanged in release map"
+                    if previous != current:
+                        if isinstance(task, dict) and task.get("revision_migration"):
+                            raise UnsafeLogs(f"Previously migrated revision differs: {directory}")
                         updated = json.loads(raw)
                         migrated = (
                             dict(task)
@@ -311,13 +254,11 @@ def build_plan(
                         migrated["revision_migration"] = {
                             "migrated_from": "v1",
                             "release": manifest["release"],
-                            "original_revision": None,
+                            "original_revision": previous,
                         }
                         if not isinstance(task, dict):
                             migrated["revision_migration"]["original_task"] = task
                         updated["task"] = migrated
-                    elif task_id in extra:
-                        reason = "changed since --from-commit"
                 prune = tuple(path for path in (variant_directory, task_directory) if path != root)
                 operations.append(
                     Operation(directory, task_id, action, reason, raw, updated, prune)
@@ -379,18 +320,14 @@ def main(argv: list[str] | None = None) -> int:
         "two enclosing folders. Only known task/vN/timestamp runs are considered; origin/output "
         "trees and unknown tasks are preserved. --apply deletes changed/retired runs and stamps "
         "retained run.json with an explicit v1 migration marker, preserving scores/timings. "
-        "Then resume normally. The map includes task repairs and open-source conversions from "
-        "v1 commit 2d4d220; use --from-commit for an older snapshot. "
-        "Default use needs no Git. Back up valuable logs before applying.",
+        "Then resume normally. Apply this only to v1 logs, before rerunning v1.1 tasks. "
+        "Back up valuable logs before applying.",
     )
     parser.add_argument("root", type=Path, help="Completed log output root or collection")
     parser.add_argument("--apply", action="store_true", help="Apply the displayed changes")
-    parser.add_argument(
-        "--from-commit", help="Additionally rerun source changes from this v1 commit"
-    )
     arguments = parser.parse_args(argv)
     try:
-        operations = build_plan(arguments.root, from_commit=arguments.from_commit)
+        operations = build_plan(arguments.root)
         for operation in operations:
             print(f"{operation.action.upper():6} {operation.directory} ({operation.reason})")
         retained = sum(operation.action == "retain" for operation in operations)

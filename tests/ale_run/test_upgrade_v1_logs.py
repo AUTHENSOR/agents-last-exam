@@ -3,15 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
 import stat
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from ale_run.tasks.revision import task_revision
 from scripts import upgrade_v1_logs as upgrade
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -290,11 +289,11 @@ def test_dirty_or_missing_current_task_is_never_stamped(release, modification):
         source.chmod(0o755)
     if modification == "removed":
         source.unlink()
-    (operation,) = plan(release)
-    assert operation.action == "clear" and operation.updated is None
+    with pytest.raises(upgrade.UnsafeLogs, match="Task source differs"):
+        plan(release)
 
 
-def test_fresh_release_runs_survive_repeated_migration(release):
+def test_changed_v1_runs_are_cleared_even_with_matching_task_revision(release):
     _, manifest_path, logs = release
     entry = json.loads(manifest_path.read_text())["tasks"]["domain/changed"]
     directory = write_run(
@@ -305,9 +304,8 @@ def test_fresh_release_runs_survive_repeated_migration(release):
             "task": {"path": "domain/changed", "revision": entry["revision"]},
         },
     )
-    original = (directory / "run.json").read_bytes()
     upgrade.apply_plan(plan(release))
-    assert (directory / "run.json").read_bytes() == original
+    assert not directory.exists()
 
 
 def test_changed_only_migration_is_idempotent(release):
@@ -369,35 +367,38 @@ def test_cli_defaults_to_preview_and_requires_apply(release, monkeypatch, capsys
     assert not directory.exists() and "Apply:" in capsys.readouterr().out
 
 
-def test_from_commit_is_additive_and_cannot_reuse_an_earlier_stamp(release):
-    repository, manifest_path, logs = release
-
-    def git(*arguments):
-        return subprocess.check_output(["git", *arguments], cwd=repository, text=True).strip()
-
-    git("init", "-q")
-    git("config", "user.name", "Test")
-    git("config", "user.email", "test@example.invalid")
-    git("add", "tasks")
-    git("commit", "-qm", "old v1 snapshot")
-    old = git("rev-parse", "HEAD")
-    source = repository / "tasks/domain/keep/main.py"
-    source.write_text("value = 2\n")
-    git("add", "tasks")
-    git("commit", "-qm", "release")
-    manifest = json.loads(manifest_path.read_text())
-    manifest["release_commit"] = git("rev-parse", "HEAD")
-    manifest["tasks"]["domain/keep"]["revision"] = task_revision(source.parent)
-    manifest_path.write_text(json.dumps(manifest))
-    write_run(logs)
-    write_run(logs, "data_only")
+def test_unchanged_versioned_v1_result_keeps_original_revision(release):
+    repository, _, logs = release
+    old_revision = "sha256:" + "1" * 64
+    directory = write_run(
+        logs,
+        metadata={
+            "status": "completed",
+            "score": 0.625,
+            "task": {"path": "domain/keep", "revision": old_revision},
+        },
+    )
     upgrade.apply_plan(plan(release))
-    (operation,) = plan(release, from_commit=old)
-    assert operation.action == "clear" and "prior revision was a v1 stamp" in operation.reason
-    write_run(logs, "data_only", timestamp="20260727_120000_01")
-    assert all(operation.action == "clear" for operation in plan(release, from_commit=old))
-    with pytest.raises(upgrade.UnsafeLogs, match="Cannot compare"):
-        plan(release, from_commit="--help")
+    task = json.loads((directory / "run.json").read_text())["task"]
+    assert task["revision"] == task_revision(repository / "tasks/domain/keep")
+    assert task["revision_migration"]["original_revision"] == old_revision
+
+
+def test_previously_migrated_stale_revision_is_not_restamped(release):
+    _, _, logs = release
+    write_run(
+        logs,
+        metadata={
+            "status": "completed",
+            "task": {
+                "path": "domain/keep",
+                "revision": "sha256:" + "1" * 64,
+                "revision_migration": {"migrated_from": "v1"},
+            },
+        },
+    )
+    with pytest.raises(upgrade.UnsafeLogs, match="Previously migrated revision differs"):
+        plan(release)
 
 
 def test_release_manifest_covers_current_selection_repairs_and_retirement():
@@ -409,6 +410,15 @@ def test_release_manifest_covers_current_selection_repairs_and_retirement():
     assert "release_revision" not in manifest
     assert sum(entry["action"] == "rerun" for entry in tasks.values()) == 57
     assert sum(entry["action"] == "retain" for entry in tasks.values()) == 65
+    modified_list = [
+        line
+        for line in (ROOT / "selected_tasks/v1.1_modified.txt").read_text().splitlines()
+        if line and not line.startswith("#")
+    ]
+    assert len(modified_list) == len(set(modified_list)) == 57
+    assert set(modified_list) == {
+        task for task, entry in tasks.items() if entry["action"] == "rerun"
+    }
     categories = manifest["category_definitions"]
     counts = {category: 0 for category in categories}
     for entry in tasks.values():
@@ -471,9 +481,13 @@ def test_release_manifest_covers_current_selection_repairs_and_retirement():
     assert len(tasks) == 152
     assert set(tasks) == selected | retired
     revisions = {task: tasks[task]["revision"] for task in selected}
-    assert manifest["source_map_identifier"] == "sha256:" + hashlib.sha256(
-        json.dumps(revisions, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    assert (
+        manifest["source_map_identifier"]
+        == "sha256:"
+        + hashlib.sha256(
+            json.dumps(revisions, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
     assert set(assets["scope"]["retired_tasks"]) == retired
     for task in retired:
         assert tasks[task]["action"] == "retire"
@@ -513,13 +527,13 @@ def test_all_release_hashes_match_current_tracked_projection(tracked_task_files,
 
 
 @pytest.fixture
-def clean_retained_tasks(tmp_path, tracked_task_files):
+def clean_release_tasks(tmp_path, tracked_task_files):
     manifest = upgrade.load_manifest(upgrade.MANIFEST)
     repository = tmp_path / "repository"
     for source in tracked_task_files:
         relative = source.relative_to(ROOT)
         task = "/".join(relative.parts[1:3])
-        if manifest["tasks"].get(task, {}).get("action") != "retain":
+        if manifest["tasks"].get(task, {}).get("action") not in {"retain", "rerun"}:
             continue
         if not source.exists() and not source.is_symlink():
             continue
@@ -531,12 +545,12 @@ def clean_retained_tasks(tmp_path, tracked_task_files):
             target.write_bytes(source.read_bytes())
             target.chmod(stat.S_IMODE(source.stat().st_mode))
     for task, entry in manifest["tasks"].items():
-        if entry["action"] == "retain":
+        if entry["action"] != "retire":
             assert task_revision(repository / "tasks" / task) == entry["revision"], task
     return repository
 
 
-def test_full_v1_fixture_migrates_152_logs_and_resumes_only_57(clean_retained_tasks, tmp_path):
+def test_full_v1_fixture_migrates_152_logs_and_resumes_only_57(clean_release_tasks, tmp_path):
     from ale_run.cli import _filter_resume
     from ale_run.orchestration.experiment_spec import AgentSpec, RunUnit
 
@@ -556,7 +570,7 @@ def test_full_v1_fixture_migrates_152_logs_and_resumes_only_57(clean_retained_ta
                     variant_index=0,
                 )
             )
-    operations = upgrade.build_plan(logs, repository=clean_retained_tasks)
+    operations = upgrade.build_plan(logs, repository=clean_release_tasks)
     assert len(operations) == 152
     assert sum(operation.action == "retain" for operation in operations) == 65
     assert all(path.exists() for path in originals)
@@ -570,7 +584,7 @@ def test_full_v1_fixture_migrates_152_logs_and_resumes_only_57(clean_retained_ta
             assert path.read_bytes() == raw
     previous_cwd = Path.cwd()
     try:
-        os.chdir(clean_retained_tasks)
+        os.chdir(clean_release_tasks)
         remaining = _filter_resume(units, logs)
     finally:
         os.chdir(previous_cwd)

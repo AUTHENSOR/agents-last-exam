@@ -203,7 +203,31 @@ async def snapshot_and_review(paths, snapshot):
     for key, name in paths.items():
         path = Path(name)
         if not path.is_absolute() or path.is_symlink() or not path.is_file():
-            raise ValueError("Missing or unsafe supported native input: " + name)
+            reason = "Missing or unsafe supported native input: " + name
+            if not path.is_absolute() or not key.startswith("family/"):
+                raise EvaluationUnavailableError(reason)
+            verify_source_bundle({
+                source.removeprefix("sources/"): Path(original).read_bytes()
+                for source, original in paths.items() if source.startswith("sources/")
+            })
+            output = snapshot / "review"
+            output.mkdir()
+            record = {
+                "format": CONTRACT,
+                "full_task_acceptance": False,
+                "native_physics_or_responses_certified": False,
+                "engineering_caveats": [],
+                "evidence_directory": str(output),
+                "outcome": "source_violation",
+                "replay_eligible": False,
+                "blocking_findings": [{
+                    "requirement": "native_interface.md: Required model inputs",
+                    "submitted_feature": key,
+                    "reason": reason,
+                }],
+            }
+            (output / "source-review-result.json").write_text(json.dumps(record, indent=2))
+            return record
         if path.stat().st_size > 100000000:
             raise ValueError("Supported input size exceeded: " + name)
         inventory[key] = {

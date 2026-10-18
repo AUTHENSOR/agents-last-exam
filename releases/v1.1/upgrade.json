@@ -2,13 +2,12 @@
   "schema_version": 1,
   "release": "v1.1",
   "baseline_commit": "2d4d2205c255e2f7dcf568baa1f0c108dfaa3d73",
-  "release_commit": "a1319f7e58d132c93a63a7d29d8640d44492f368",
-  "baseline_policy": "Repair accounting starts at source snapshot 2d4d220. The v1 tag preserves main immediately before v1.1. Use --from-commit for older snapshots. Retention records reuse eligibility, not original run provenance.",
+  "baseline_policy": "Repair accounting starts at source snapshot 2d4d220. The v1 tag preserves main immediately before v1.1. Retention records reuse eligibility, not original run provenance.",
   "hash_policy": "Complete task folders, including task-card edits, executable modes and symlink targets, hashed by ale_run.tasks.revision.task_revision. Generated caches are excluded. Nonrelease evidence is preserved outside task folders; required untracked source files belong to the publication set. Public checkout and runtime folders must have identical task hashes. source_map_identifier hashes the compact sorted JSON map of the 122 selected task IDs to their revisions.",
-  "revision_status": "frozen",
+  "revision_status": "updated",
   "scope_reconciled_date": "2026-10-15",
   "scope_reconciled_timezone": "Etc/UTC",
-  "revision_note": "All 122 active task revisions match the source map and release_commit, including CPU animation support, evaluator launch fixes, G-code release metadata/documentation alignment and isolated evaluator artifacts. Matching data and image identities are recorded separately in releases/v1.1/assets.json.",
+  "revision_note": "Task revisions identify the 122 active task folders. Matching data and image identities are recorded separately in releases/v1.1/assets.json.",
   "tasks": {
     "agriculture_env/crop_rotation_d02": {
       "action": "retire",
@@ -112,7 +111,7 @@
     },
     "business_finance/odoo": {
       "action": "retain",
-      "revision": "sha256:ea4f5caaa9895b6cafa9c970b014b45c65550e4321f3ae2ccf92b0ae95e73b55"
+      "revision": "sha256:a94bfd50baafc269c01faf8e28075fdffaaf49f467bbec3f6d69909b237e1702"
     },
     "business_finance/pe_screening_memo_1": {
       "action": "retire",
@@ -432,7 +431,7 @@
     },
     "engineering/inner_support_elevation_optimization": {
       "action": "rerun",
-      "revision": "sha256:9716a0e1b1ff309c173668e60fb8e68257cf65548244797796c8c556f972446e",
+      "revision": "sha256:a47469e86c3af8cc672132cfde86e0d84a3f1309527e38f4130fd5008fa6da6f",
       "reasons": [
         "task-repair-data-update-or-oss-conversion",
         "source-diff-from-v1-baseline"
@@ -1141,7 +1140,7 @@
     },
     "visual_media/skeletal_animation_reproduction": {
       "action": "rerun",
-      "revision": "sha256:21a5a8bb77003b7533fb3bba3f9186a58d98a59faa999b9bbc7e87cfe651520a",
+      "revision": "sha256:8a484af94be474b5974ef7d16dfb81f9c4c29a56fbcea5a662a35d3ebafb0025",
       "reasons": [
         "task-repair-data-update-or-oss-conversion",
         "source-diff-from-v1-baseline"
@@ -1167,7 +1166,7 @@
     },
     "visual_media/video_storyboard_001": {
       "action": "retain",
-      "revision": "sha256:2c32198cfa6b38e2c3929ef4d612217ce9e832510a628955a4142c5f7a4bac3c"
+      "revision": "sha256:7897b67705663d28353485d9ab78d0bc5c3bfba77da4c0722d9cf89a9dc9c589"
     },
     "engineering/mold-flow": {
       "action": "retire",
@@ -1190,9 +1189,7 @@
     "data": "Inputs, starter/helper assets, models, media or reference answers; excludes instruction-only, grader-only and runtime-only payload edits."
   },
   "counting_policy": "Distinct selected benchmark tasks relative to v1 source and distributed inputs/references. Categories overlap. Excludes retired tasks, unselected variants, inactive metadata, packaging-only cleanup and shared framework changes.",
-  "source_map_identifier": "sha256:307a634771b5240c7cda1bbf91f44c3785789ad71f7a484fb97d49c287d2c802",
-  "frozen_at": "2026-10-16T23:56:19Z",
-  "release_commit_status": "frozen-source-committed",
+  "source_map_identifier": "sha256:a0e2a95f62ae8caff62b1e72fa0296dd371f934d0e5316d6d611236f4bdc3d9e",
   "v1_tag": "v1",
   "v1_commit": "d9abc0734b56ea34116c5bfcbdd0b808269ab9e2"
 }

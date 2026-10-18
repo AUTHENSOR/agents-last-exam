@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import asyncio
 import json
+import logging
 from pathlib import Path
 import time
 
@@ -27,6 +28,7 @@ from tasks.engineering.inner_support_elevation_optimization.verification import 
 from tasks.linux_runtime import LinuxTaskConfig
 
 ASSETS = Path(__file__).with_name("assets")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -86,6 +88,7 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
             "full_task_acceptance": False,
         }
         await upload_files(session, evidence, {"evaluation-gate.json": json.dumps(gate, indent=2).encode()})
+        logger.info("Support evaluation result: %s", json.dumps(gate))
         return [0.0]
     try:
         replay = await replay_submission(
@@ -103,6 +106,7 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
             "full_task_acceptance": False,
         }
         await upload_files(session, evidence, {"evaluation-gate.json": json.dumps(gate, indent=2).encode()})
+        logger.info("Support evaluation result: %s", json.dumps(gate))
         return [0.0]
     try:
         result = await asyncio.wait_for(
@@ -113,4 +117,7 @@ async def evaluate(task_cfg, session: cb.DesktopSession) -> list[float]:
         raise EvaluationUnavailableError(
             "Native delivery assessment exceeded the evaluator time budget"
         ) from error
+    logger.info("Support evaluation result: %s", json.dumps({
+        **result, "evidence_directory": evidence, "native_replay_completed": True,
+    }))
     return [float(result["score"])]

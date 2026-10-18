@@ -269,8 +269,9 @@ print(json.dumps(result))
                 )
                 if usage.get("return_code", 1) == 0:
                     receipt["observed_cgroups"] = json.loads(usage["stdout"])
-            except (OSError, ValueError, TimeoutError) as error:
+            except (OSError, ValueError, TimeoutError, EvaluationUnavailableError) as error:
                 receipt["resource_probe_error"] = str(error)
+                logger.warning("Support resource probe failed for %s: %s", unit, error)
         await upload_files(session, evidence, {"native-live.json": json.dumps(receipt, indent=2).encode()})
         if fields.get("MainPID") == "0":
             break
@@ -287,6 +288,7 @@ print(json.dumps(result))
             f"Native replay has no terminal receipt: {unit}"
         ) from error
     await upload_files(session, evidence, {"family-replay.json": json.dumps(replay, indent=2).encode()})
+    logger.info("Support native replay result %s: %s", unit, json.dumps(replay))
     exhausted = replay.get("exhausted_resource")
     confirmed_limit = (
         exhausted == "wall_time" and replay.get("elapsed_s", 0) >= REPLAY_SECONDS
